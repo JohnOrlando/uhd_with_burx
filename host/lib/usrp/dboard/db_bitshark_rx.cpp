@@ -180,10 +180,6 @@ private:
 	cmd_vector[8] = val[3];
 
 	send_cmd(cmd_vector);
-
-	/* need to pause here since the cmd takes some time to process on
-	   the daughterboard */
-	boost::this_thread::sleep(boost::posix_time::milliseconds(400));
     }
 };
 
@@ -261,12 +257,7 @@ void burx::set_lo_freq(double target_freq)
    
    send_cmd(cmd_vector);
 
-    /* need to pause here since the cmd takes some time to process on
-       the daughterboard */
-    boost::this_thread::sleep(boost::posix_time::milliseconds(200));
-
    _lo_freq = target_freq;
-
 }
 
 /***********************************************************************
@@ -302,10 +293,6 @@ void burx::set_gain(double gain, const std::string &name)
     else UHD_THROW_INVALID_CODE_PATH();
 
     send_cmd(cmd_vector);
-
-    /* need to pause here since the cmd takes some time to process on
-       the daughterboard */
-    boost::this_thread::sleep(boost::posix_time::milliseconds(200));
 
     _gains[name] = gain;
 }
@@ -348,10 +335,6 @@ void burx::set_bandwidth(double bandwidth){
     cmd_vector[8] = val[3];
 
     send_cmd(cmd_vector);
-
-    /* need to pause here since the cmd takes some time to process on the
-       daughterboard */
-    boost::this_thread::sleep(boost::posix_time::milliseconds(200));
 
     _bandwidth = bandwidth;
 }
