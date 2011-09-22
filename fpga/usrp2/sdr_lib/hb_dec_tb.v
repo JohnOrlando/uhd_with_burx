@@ -1,7 +1,24 @@
+//
+// Copyright 2011 Ettus Research LLC
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 module hb_dec_tb( ) ;
    
     // Parameters for instantiation
-    parameter               clocks  = 9'd2 ; // Number of clocks per input
+    parameter               clocks  = 9'd12 ; // Number of clocks per input
     parameter               decim   = 1 ; // Sets the filter to decimate
     parameter               rate    = 2 ; // Sets the decimation rate
 
@@ -9,9 +26,9 @@ module hb_dec_tb( ) ;
     reg                     reset ;
     reg                     enable ;
     reg                     strobe_in ;
-    reg     signed  [17:0]  data_in ;
+    reg     signed  [23:0]  data_in ;
     wire                    strobe_out ;
-    wire    signed  [17:0]  data_out ;
+    wire    signed  [23:0]  data_out ;
 
    initial
      begin
@@ -48,8 +65,8 @@ module hb_dec_tb( ) ;
     */
 
    
-   hb_dec #(.IWIDTH(18),.OWIDTH(18),.CWIDTH(18),.ACCWIDTH(24)) uut
-     (.clk(clock),.rst(reset),.bypass(0),.cpi(clocks),.stb_in(strobe_in),.data_in(data_in),
+   hb_dec #(.WIDTH(24)) uut
+     (.clk(clock),.rst(reset),.bypass(0),.run(1),.cpi(clocks),.stb_in(strobe_in),.data_in(data_in),
       .stb_out(strobe_out),.data_out(data_out) );
    
     integer i, ri, ro, infile, outfile ;

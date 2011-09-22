@@ -1,3 +1,20 @@
+//
+// Copyright 2011 Ettus Research LLC
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 
 // Boot RAM for S3A, 8KB, dual port
 
@@ -65,8 +82,8 @@ module bootram
       .DOPA(),              // Port A 4-bit Parity Output
       .ADDRA(if_adr[10:2]), // Port A 9-bit Address Input
       .CLKA(clk),           // Port A 1-bit Clock
-      .DIA(32'd0),          // Port A 32-bit Data Input
-      .DIPA(4'd0),          // Port A 4-bit parity Input
+      .DIA(32'hffffffff),   // Port A 32-bit Data Input
+      .DIPA(4'hf),          // Port A 4-bit parity Input
       .ENA(1'b1),           // Port A 1-bit RAM Enable Input
       .SSRA(1'b0),          // Port A 1-bit Synchronous Set/Reset Input
       .WEA(1'b0),           // Port A 4-bit Write Enable Input
@@ -76,7 +93,7 @@ module bootram
       .ADDRB(dwb_adr_i[10:2]), // Port B 9-bit Address Input
       .CLKB(clk),              // Port B 1-bit Clock
       .DIB(dwb_dat_i),         // Port B 32-bit Data Input
-      .DIPB(4'd0),             // Port-B 4-bit parity Input
+      .DIPB(4'hf),             // Port-B 4-bit parity Input
       .ENB(ENB0),              // Port B 1-bit RAM Enable Input
       .SSRB(1'b0),             // Port B 1-bit Synchronous Set/Reset Input
       .WEB(WEB)                // Port B 4-bit Write Enable Input
@@ -95,8 +112,8 @@ module bootram
       .DOPA(),              // Port A 4-bit Parity Output
       .ADDRA(if_adr[10:2]), // Port A 9-bit Address Input
       .CLKA(clk),           // Port A 1-bit Clock
-      .DIA(32'd0),          // Port A 32-bit Data Input
-      .DIPA(4'd0),          // Port A 4-bit parity Input
+      .DIA(32'hffffffff),          // Port A 32-bit Data Input
+      .DIPA(4'hf),          // Port A 4-bit parity Input
       .ENA(1'b1),           // Port A 1-bit RAM Enable Input
       .SSRA(1'b0),          // Port A 1-bit Synchronous Set/Reset Input
       .WEA(1'b0),           // Port A 4-bit Write Enable Input
@@ -106,7 +123,7 @@ module bootram
       .ADDRB(dwb_adr_i[10:2]), // Port B 9-bit Address Input
       .CLKB(clk),              // Port B 1-bit Clock
       .DIB(dwb_dat_i),         // Port B 32-bit Data Input
-      .DIPB(4'd0),             // Port-B 4-bit parity Input
+      .DIPB(4'hf),             // Port-B 4-bit parity Input
       .ENB(ENB1),              // Port B 1-bit RAM Enable Input
       .SSRB(1'b0),             // Port B 1-bit Synchronous Set/Reset Input
       .WEB(WEB)                // Port B 4-bit Write Enable Input
@@ -125,8 +142,8 @@ module bootram
       .DOPA(),              // Port A 4-bit Parity Output
       .ADDRA(if_adr[10:2]), // Port A 9-bit Address Input
       .CLKA(clk),           // Port A 1-bit Clock
-      .DIA(32'd0),          // Port A 32-bit Data Input
-      .DIPA(4'd0),          // Port A 4-bit parity Input
+      .DIA(32'hffffffff),          // Port A 32-bit Data Input
+      .DIPA(4'hf),          // Port A 4-bit parity Input
       .ENA(1'b1),           // Port A 1-bit RAM Enable Input
       .SSRA(1'b0),          // Port A 1-bit Synchronous Set/Reset Input
       .WEA(1'b0),           // Port A 4-bit Write Enable Input
@@ -136,7 +153,7 @@ module bootram
       .ADDRB(dwb_adr_i[10:2]), // Port B 9-bit Address Input
       .CLKB(clk),              // Port B 1-bit Clock
       .DIB(dwb_dat_i),         // Port B 32-bit Data Input
-      .DIPB(4'd0),             // Port-B 4-bit parity Input
+      .DIPB(4'hf),             // Port-B 4-bit parity Input
       .ENB(ENB2),              // Port B 1-bit RAM Enable Input
       .SSRB(1'b0),             // Port B 1-bit Synchronous Set/Reset Input
       .WEB(WEB)                // Port B 4-bit Write Enable Input
@@ -155,8 +172,8 @@ module bootram
       .DOPA(),              // Port A 4-bit Parity Output
       .ADDRA(if_adr[10:2]), // Port A 9-bit Address Input
       .CLKA(clk),           // Port A 1-bit Clock
-      .DIA(32'd0),          // Port A 32-bit Data Input
-      .DIPA(4'd0),          // Port A 4-bit parity Input
+      .DIA(32'hffffffff),          // Port A 32-bit Data Input
+      .DIPA(4'hf),          // Port A 4-bit parity Input
       .ENA(1'b1),           // Port A 1-bit RAM Enable Input
       .SSRA(1'b0),          // Port A 1-bit Synchronous Set/Reset Input
       .WEA(1'b0),           // Port A 4-bit Write Enable Input
@@ -166,7 +183,7 @@ module bootram
       .ADDRB(dwb_adr_i[10:2]), // Port B 9-bit Address Input
       .CLKB(clk),              // Port B 1-bit Clock
       .DIB(dwb_dat_i),         // Port B 32-bit Data Input
-      .DIPB(4'd0),             // Port-B 4-bit parity Input
+      .DIPB(4'hf),             // Port-B 4-bit parity Input
       .ENB(ENB3),              // Port B 1-bit RAM Enable Input
       .SSRB(1'b0),             // Port B 1-bit Synchronous Set/Reset Input
       .WEB(WEB)                // Port B 4-bit Write Enable Input
@@ -185,8 +202,8 @@ module bootram
       .DOPA(),              // Port A 4-bit Parity Output
       .ADDRA(if_adr[10:2]), // Port A 9-bit Address Input
       .CLKA(clk),           // Port A 1-bit Clock
-      .DIA(32'd0),          // Port A 32-bit Data Input
-      .DIPA(4'd0),          // Port A 4-bit parity Input
+      .DIA(32'hffffffff),          // Port A 32-bit Data Input
+      .DIPA(4'hf),          // Port A 4-bit parity Input
       .ENA(1'b1),           // Port A 1-bit RAM Enable Input
       .SSRA(1'b0),          // Port A 1-bit Synchronous Set/Reset Input
       .WEA(1'b0),           // Port A 4-bit Write Enable Input
@@ -196,7 +213,7 @@ module bootram
       .ADDRB(dwb_adr_i[10:2]), // Port B 9-bit Address Input
       .CLKB(clk),              // Port B 1-bit Clock
       .DIB(dwb_dat_i),         // Port B 32-bit Data Input
-      .DIPB(4'd0),             // Port-B 4-bit parity Input
+      .DIPB(4'hf),             // Port-B 4-bit parity Input
       .ENB(ENB4),              // Port B 1-bit RAM Enable Input
       .SSRB(1'b0),             // Port B 1-bit Synchronous Set/Reset Input
       .WEB(WEB)                // Port B 4-bit Write Enable Input
@@ -215,8 +232,8 @@ module bootram
       .DOPA(),              // Port A 4-bit Parity Output
       .ADDRA(if_adr[10:2]), // Port A 9-bit Address Input
       .CLKA(clk),           // Port A 1-bit Clock
-      .DIA(32'd0),          // Port A 32-bit Data Input
-      .DIPA(4'd0),          // Port A 4-bit parity Input
+      .DIA(32'hffffffff),          // Port A 32-bit Data Input
+      .DIPA(4'hf),          // Port A 4-bit parity Input
       .ENA(1'b1),           // Port A 1-bit RAM Enable Input
       .SSRA(1'b0),          // Port A 1-bit Synchronous Set/Reset Input
       .WEA(1'b0),           // Port A 4-bit Write Enable Input
@@ -226,7 +243,7 @@ module bootram
       .ADDRB(dwb_adr_i[10:2]), // Port B 9-bit Address Input
       .CLKB(clk),              // Port B 1-bit Clock
       .DIB(dwb_dat_i),         // Port B 32-bit Data Input
-      .DIPB(4'd0),             // Port-B 4-bit parity Input
+      .DIPB(4'hf),             // Port-B 4-bit parity Input
       .ENB(ENB5),              // Port B 1-bit RAM Enable Input
       .SSRB(1'b0),             // Port B 1-bit Synchronous Set/Reset Input
       .WEB(WEB)                // Port B 4-bit Write Enable Input
@@ -245,8 +262,8 @@ module bootram
       .DOPA(),              // Port A 4-bit Parity Output
       .ADDRA(if_adr[10:2]), // Port A 9-bit Address Input
       .CLKA(clk),           // Port A 1-bit Clock
-      .DIA(32'd0),          // Port A 32-bit Data Input
-      .DIPA(4'd0),          // Port A 4-bit parity Input
+      .DIA(32'hffffffff),          // Port A 32-bit Data Input
+      .DIPA(4'hf),          // Port A 4-bit parity Input
       .ENA(1'b1),           // Port A 1-bit RAM Enable Input
       .SSRA(1'b0),          // Port A 1-bit Synchronous Set/Reset Input
       .WEA(1'b0),           // Port A 4-bit Write Enable Input
@@ -256,7 +273,7 @@ module bootram
       .ADDRB(dwb_adr_i[10:2]), // Port B 9-bit Address Input
       .CLKB(clk),              // Port B 1-bit Clock
       .DIB(dwb_dat_i),         // Port B 32-bit Data Input
-      .DIPB(4'd0),             // Port-B 4-bit parity Input
+      .DIPB(4'hf),             // Port-B 4-bit parity Input
       .ENB(ENB6),              // Port B 1-bit RAM Enable Input
       .SSRB(1'b0),             // Port B 1-bit Synchronous Set/Reset Input
       .WEB(WEB)                // Port B 4-bit Write Enable Input
@@ -275,8 +292,8 @@ module bootram
       .DOPA(),              // Port A 4-bit Parity Output
       .ADDRA(if_adr[10:2]), // Port A 9-bit Address Input
       .CLKA(clk),           // Port A 1-bit Clock
-      .DIA(32'd0),          // Port A 32-bit Data Input
-      .DIPA(4'd0),          // Port A 4-bit parity Input
+      .DIA(32'hffffffff),          // Port A 32-bit Data Input
+      .DIPA(4'hf),          // Port A 4-bit parity Input
       .ENA(1'b1),           // Port A 1-bit RAM Enable Input
       .SSRA(1'b0),          // Port A 1-bit Synchronous Set/Reset Input
       .WEA(1'b0),           // Port A 4-bit Write Enable Input
@@ -286,7 +303,7 @@ module bootram
       .ADDRB(dwb_adr_i[10:2]), // Port B 9-bit Address Input
       .CLKB(clk),              // Port B 1-bit Clock
       .DIB(dwb_dat_i),         // Port B 32-bit Data Input
-      .DIPB(4'd0),             // Port-B 4-bit parity Input
+      .DIPB(4'hf),             // Port-B 4-bit parity Input
       .ENB(ENB7),              // Port B 1-bit RAM Enable Input
       .SSRB(1'b0),             // Port B 1-bit Synchronous Set/Reset Input
       .WEB(WEB)                // Port B 4-bit Write Enable Input

@@ -19,15 +19,17 @@
 #include "fw_common.h"
 #include "usrp2_iface.hpp"
 #include <uhd/exception.hpp>
+#include <uhd/utils/msg.hpp>
+#include <uhd/utils/tasks.hpp>
+#include <uhd/utils/safe_call.hpp>
 #include <uhd/types/dict.hpp>
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
 #include <boost/asio.hpp> //used for htonl and ntohl
 #include <boost/assign/list_of.hpp>
 #include <boost/format.hpp>
+#include <boost/bind.hpp>
 #include <boost/tokenizer.hpp>
-#include <boost/thread/thread.hpp>
-#include <boost/thread/barrier.hpp>
 #include <boost/functional/hash.hpp>
 #include <algorithm>
 #include <iostream>
@@ -44,10 +46,6 @@ static const boost::uint32_t MIN_PROTO_COMPAT_I2C = 7;
 // and the compatibility of the register mapping (more likely to change).
 static const boost::uint32_t MIN_PROTO_COMPAT_REG = USRP2_FW_COMPAT_NUM;
 static const boost::uint32_t MIN_PROTO_COMPAT_UART = 7;
-
-// Map for virtual firmware regs (not very big so we can keep it here for now)
-#define U2_FW_REG_LOCK_TIME 0
-#define U2_FW_REG_LOCK_GPID 1
 
 //Define get_gpid() to get a globally unique identifier for this process.
 //The gpid is implemented as a hash of the pid and a unique machine identifier.
@@ -99,9 +97,9 @@ public:
         mb_eeprom = mboard_eeprom_t(*this, mboard_eeprom_t::MAP_N100);
     }
 
-    ~usrp2_iface_impl(void){
+    ~usrp2_iface_impl(void){UHD_SAFE_CALL(
         this->lock_device(false);
-    }
+    )}
 
 /***********************************************************************
  * Device locking
@@ -109,13 +107,12 @@ public:
 
     void lock_device(bool lock){
         if (lock){
-            boost::barrier spawn_barrier(2);
-            _lock_thread_group.create_thread(boost::bind(&usrp2_iface_impl::lock_loop, this, boost::ref(spawn_barrier)));
-            spawn_barrier.wait();
+            this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FW_POKE32>(U2_FW_REG_LOCK_GPID, boost::uint32_t(get_gpid()));
+            _lock_task = task::make(boost::bind(&usrp2_iface_impl::lock_task, this));
         }
         else{
-            _lock_thread_group.interrupt_all();
-            _lock_thread_group.join_all();
+            _lock_task.reset(); //shutdown the task
+            this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FW_POKE32>(U2_FW_REG_LOCK_TIME, 0); //unlock
         }
     }
 
@@ -131,47 +128,37 @@ public:
         return lock_gpid != boost::uint32_t(get_gpid());
     }
 
-    void lock_loop(boost::barrier &spawn_barrier){
-        spawn_barrier.wait();
-
-        try{
-            this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FW_POKE32>(U2_FW_REG_LOCK_GPID, boost::uint32_t(get_gpid()));
-            while(true){
-                //re-lock in loop
-                boost::uint32_t curr_secs = this->peek32(U2_REG_TIME64_SECS_RB_IMM);
-                this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FW_POKE32>(U2_FW_REG_LOCK_TIME, curr_secs);
-                //sleep for a bit
-                boost::this_thread::sleep(boost::posix_time::milliseconds(1500));
-            }
-        } catch(const boost::thread_interrupted &){}
-
-        //unlock on exit
-        this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FW_POKE32>(U2_FW_REG_LOCK_TIME, 0);
+    void lock_task(void){
+        //re-lock in task
+        boost::uint32_t curr_secs = this->peek32(U2_REG_TIME64_SECS_RB_IMM);
+        this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FW_POKE32>(U2_FW_REG_LOCK_TIME, curr_secs);
+        //sleep for a bit
+        boost::this_thread::sleep(boost::posix_time::milliseconds(1500));
     }
 
 /***********************************************************************
  * Peek and Poke
  **********************************************************************/
-    void poke32(boost::uint32_t addr, boost::uint32_t data){
+    void poke32(wb_addr_type addr, boost::uint32_t data){
         this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FPGA_POKE32>(addr, data);
     }
 
-    boost::uint32_t peek32(boost::uint32_t addr){
+    boost::uint32_t peek32(wb_addr_type addr){
         return this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FPGA_PEEK32>(addr);
     }
 
-    void poke16(boost::uint32_t addr, boost::uint16_t data){
+    void poke16(wb_addr_type addr, boost::uint16_t data){
         this->get_reg<boost::uint16_t, USRP2_REG_ACTION_FPGA_POKE16>(addr, data);
     }
 
-    boost::uint16_t peek16(boost::uint32_t addr){
+    boost::uint16_t peek16(wb_addr_type addr){
         return this->get_reg<boost::uint16_t, USRP2_REG_ACTION_FPGA_PEEK16>(addr);
     }
 
     template <class T, usrp2_reg_action_t action>
-    T get_reg(boost::uint32_t addr, T data = 0){
+    T get_reg(wb_addr_type addr, T data = 0){
         //setup the out data
-        usrp2_ctrl_data_t out_data;
+        usrp2_ctrl_data_t out_data = usrp2_ctrl_data_t();
         out_data.id = htonl(USRP2_CTRL_ID_GET_THIS_REGISTER_FOR_ME_BRO);
         out_data.data.reg_args.addr = htonl(addr);
         out_data.data.reg_args.data = htonl(boost::uint32_t(data));
@@ -199,7 +186,7 @@ public:
         ;
 
         //setup the out data
-        usrp2_ctrl_data_t out_data;
+        usrp2_ctrl_data_t out_data = usrp2_ctrl_data_t();
         out_data.id = htonl(USRP2_CTRL_ID_TRANSACT_ME_SOME_SPI_BRO);
         out_data.data.spi_args.dev = htonl(which_slave);
         out_data.data.spi_args.miso_edge = spi_edge_to_otw[config.miso_edge];
@@ -220,7 +207,7 @@ public:
  **********************************************************************/
     void write_i2c(boost::uint8_t addr, const byte_vector_t &buf){
         //setup the out data
-        usrp2_ctrl_data_t out_data;
+        usrp2_ctrl_data_t out_data = usrp2_ctrl_data_t();
         out_data.id = htonl(USRP2_CTRL_ID_WRITE_THESE_I2C_VALUES_BRO);
         out_data.data.i2c_args.addr = addr;
         out_data.data.i2c_args.bytes = buf.size();
@@ -238,7 +225,7 @@ public:
 
     byte_vector_t read_i2c(boost::uint8_t addr, size_t num_bytes){
         //setup the out data
-        usrp2_ctrl_data_t out_data;
+        usrp2_ctrl_data_t out_data = usrp2_ctrl_data_t();
         out_data.id = htonl(USRP2_CTRL_ID_DO_AN_I2C_READ_FOR_ME_BRO);
         out_data.data.i2c_args.addr = addr;
         out_data.data.i2c_args.bytes = num_bytes;
@@ -262,13 +249,13 @@ public:
  **********************************************************************/
     void write_uart(boost::uint8_t dev, const std::string &buf){
       //first tokenize the string into 20-byte substrings
-      boost::offset_separator f(20, 1, true, true);
+      boost::offset_separator f(20, 20, true, true);
       boost::tokenizer<boost::offset_separator> tok(buf, f);
       std::vector<std::string> queue(tok.begin(), tok.end());
 
       BOOST_FOREACH(std::string item, queue) {
         //setup the out data
-        usrp2_ctrl_data_t out_data;
+        usrp2_ctrl_data_t out_data = usrp2_ctrl_data_t();
         out_data.id = htonl(USRP2_CTRL_ID_HEY_WRITE_THIS_UART_FOR_ME_BRO);
         out_data.data.uart_args.dev = dev;
         out_data.data.uart_args.bytes = item.size();
@@ -290,7 +277,7 @@ public:
       std::string result;
       while(readlen == 20) { //while we keep receiving full packets
         //setup the out data
-        usrp2_ctrl_data_t out_data;
+        usrp2_ctrl_data_t out_data = usrp2_ctrl_data_t();
         out_data.id = htonl(USRP2_CTRL_ID_SO_LIKE_CAN_YOU_READ_THIS_UART_BRO);
         out_data.data.uart_args.dev = dev;
         out_data.data.uart_args.bytes = 20;
@@ -363,6 +350,8 @@ public:
         case 0x0400: return USRP2_REV4;
         case 0x0A00: return USRP_N200;
         case 0x0A01: return USRP_N210;
+        case 0x0A10: return USRP_N200_R4;
+        case 0x0A11: return USRP_N210_R4;
         }
         return USRP_NXXX; //unknown type
     }
@@ -373,9 +362,16 @@ public:
         case USRP2_REV4: return "USRP2-REV4";
         case USRP_N200: return "USRP-N200";
         case USRP_N210: return "USRP-N210";
+        case USRP_N200_R4: return "USRP-N200-REV4";
+        case USRP_N210_R4: return "USRP-N210-REV4";
         case USRP_NXXX: return "USRP-N???";
         }
         UHD_THROW_INVALID_CODE_PATH();
+    }
+
+    const std::string get_fw_version_string(void){
+        boost::uint32_t minor = this->get_reg<boost::uint32_t, USRP2_REG_ACTION_FW_PEEK32>(U2_FW_REG_VER_MINOR);
+        return str(boost::format("%u.%u") % _protocol_compat % minor);
     }
 
 private:
@@ -388,7 +384,7 @@ private:
     boost::uint32_t _protocol_compat;
 
     //lock thread stuff
-    boost::thread_group _lock_thread_group;
+    task::sptr _lock_task;
 };
 
 /***********************************************************************

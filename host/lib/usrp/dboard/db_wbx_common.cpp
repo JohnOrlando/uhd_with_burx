@@ -35,15 +35,23 @@
 #define RX_ATTN_SHIFT   8                       // lsb of RX Attenuator Control
 #define RX_ATTN_MASK    (63 << RX_ATTN_SHIFT)      // valid bits of RX Attenuator Control
 
+// TX Attenuator Pins (v3 only)
+#define TX_ATTN_16      (1 << 14)
+#define TX_ATTN_8       (1 << 5)
+#define TX_ATTN_4       (1 << 4)
+#define TX_ATTN_2       (1 << 3)
+#define TX_ATTN_1       (1 << 1)
+#define TX_ATTN_MASK    (TX_ATTN_16|TX_ATTN_8|TX_ATTN_4|TX_ATTN_2|TX_ATTN_1)      // valid bits of TX Attenuator Control
+
 // Mixer functions
-#define TX_MIXER_ENB    (TXMOD_EN|ADF4350_PDBRF)
+#define TX_MIXER_ENB    (TXMOD_EN|ADF4350_PDBRF)    // for v3, TXMOD_EN tied to ADF4350_PDBRF rather than separate
 #define TX_MIXER_DIS    0
 
 #define RX_MIXER_ENB    (RXBB_PDB|ADF4350_PDBRF)
 #define RX_MIXER_DIS    0
 
 // Power functions
-#define TX_POWER_UP     (TX_PUP_5V|TX_PUP_3V|ADF4350_CE) // high enables power supply
+#define TX_POWER_UP     (TX_PUP_5V|TX_PUP_3V) // high enables power supply
 #define TX_POWER_DOWN   0
 
 #define RX_POWER_UP     (RX_PUP_5V|RX_PUP_3V|ADF4350_CE) // high enables power supply
@@ -53,7 +61,6 @@
 #include "adf4350_regs.hpp"
 #include <uhd/utils/log.hpp>
 #include <uhd/types/dict.hpp>
-#include <uhd/usrp/subdev_props.hpp>
 #include <uhd/types/ranges.hpp>
 #include <uhd/types/sensors.hpp>
 #include <uhd/utils/assert_has.hpp>
@@ -75,6 +82,10 @@ static const uhd::dict<std::string, gain_range_t> wbx_tx_gain_ranges = map_list_
     ("PGA0", gain_range_t(0, 25, 0.05))
 ;
 
+static const uhd::dict<std::string, gain_range_t> wbx_v3_tx_gain_ranges = map_list_of
+    ("PGA0", gain_range_t(0, 31, 1.0))
+;
+
 static const uhd::dict<std::string, gain_range_t> wbx_rx_gain_ranges = map_list_of
     ("PGA0", gain_range_t(0, 31.5, 0.5))
 ;
@@ -88,27 +99,39 @@ wbx_base::wbx_base(ctor_args_t args) : xcvr_dboard_base(args){
     this->get_iface()->set_clock_enabled(dboard_iface::UNIT_TX, true);
     this->get_iface()->set_clock_enabled(dboard_iface::UNIT_RX, true);
 
+    //v3 has different io bits for attenuator control
+    int v3_iobits = is_v3() ? TX_ATTN_MASK : ADF4350_CE;
+    int v3_tx_mod = is_v3() ? ADF4350_PDBRF : TXMOD_EN|ADF4350_PDBRF;
+
     //set the gpio directions and atr controls
-    this->get_iface()->set_pin_ctrl(dboard_iface::UNIT_TX, TXMOD_EN|ADF4350_PDBRF);
+    this->get_iface()->set_pin_ctrl(dboard_iface::UNIT_TX, v3_tx_mod);
     this->get_iface()->set_pin_ctrl(dboard_iface::UNIT_RX, RXBB_PDB|ADF4350_PDBRF);
-    this->get_iface()->set_gpio_ddr(dboard_iface::UNIT_TX, TX_PUP_5V|TX_PUP_3V|ADF4350_CE|TXMOD_EN|ADF4350_PDBRF);
+    this->get_iface()->set_gpio_ddr(dboard_iface::UNIT_TX, TX_PUP_5V|TX_PUP_3V|v3_tx_mod|v3_iobits);
     this->get_iface()->set_gpio_ddr(dboard_iface::UNIT_RX, RX_PUP_5V|RX_PUP_3V|ADF4350_CE|RXBB_PDB|ADF4350_PDBRF|RX_ATTN_MASK);
 
-    //setup ATR for the mixer enables
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_IDLE,        TX_MIXER_DIS, TX_MIXER_DIS | TX_MIXER_ENB);
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_RX_ONLY,     TX_MIXER_DIS, TX_MIXER_DIS | TX_MIXER_ENB);
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_TX_ONLY,     TX_MIXER_ENB, TX_MIXER_DIS | TX_MIXER_ENB);
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_FULL_DUPLEX, TX_MIXER_ENB, TX_MIXER_DIS | TX_MIXER_ENB);
+    //setup ATR for the mixer enables (always enabled to prevent phase slip between bursts)
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_IDLE,        v3_tx_mod, TX_MIXER_DIS | v3_tx_mod);
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_RX_ONLY,     v3_tx_mod, TX_MIXER_DIS | v3_tx_mod);
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_TX_ONLY,     v3_tx_mod, TX_MIXER_DIS | v3_tx_mod);
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_FULL_DUPLEX, v3_tx_mod, TX_MIXER_DIS | v3_tx_mod);
 
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_IDLE,        RX_MIXER_DIS, RX_MIXER_DIS | RX_MIXER_ENB);
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_TX_ONLY,     RX_MIXER_DIS, RX_MIXER_DIS | RX_MIXER_ENB);
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_IDLE,        RX_MIXER_ENB, RX_MIXER_DIS | RX_MIXER_ENB);
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_TX_ONLY,     RX_MIXER_ENB, RX_MIXER_DIS | RX_MIXER_ENB);
     this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_RX_ONLY,     RX_MIXER_ENB, RX_MIXER_DIS | RX_MIXER_ENB);
     this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_FULL_DUPLEX, RX_MIXER_ENB, RX_MIXER_DIS | RX_MIXER_ENB);
 
     //set some default values
-    BOOST_FOREACH(const std::string &name, wbx_tx_gain_ranges.keys()){
-        set_tx_gain(wbx_tx_gain_ranges[name].start(), name);
+    if (is_v3()) {
+        BOOST_FOREACH(const std::string &name, wbx_v3_tx_gain_ranges.keys()){
+            set_tx_gain(wbx_v3_tx_gain_ranges[name].start(), name);
+        }
     }
+    else {
+        BOOST_FOREACH(const std::string &name, wbx_tx_gain_ranges.keys()){
+            set_tx_gain(wbx_tx_gain_ranges[name].start(), name);
+        }
+    }
+
     BOOST_FOREACH(const std::string &name, wbx_rx_gain_ranges.keys()){
         set_rx_gain(wbx_rx_gain_ranges[name].start(), name);
     }
@@ -131,7 +154,7 @@ void wbx_base::set_rx_enabled(bool enb){
 
 void wbx_base::set_tx_enabled(bool enb){
     this->get_iface()->set_gpio_out(dboard_iface::UNIT_TX,
-        (enb)? TX_POWER_UP : TX_POWER_DOWN, TX_POWER_UP | TX_POWER_DOWN
+        (enb)? TX_POWER_UP | ADF4350_CE : TX_POWER_DOWN, TX_POWER_UP | TX_POWER_DOWN | (is_v3() ? 0 : ADF4350_CE)
     );
 }
 
@@ -150,7 +173,7 @@ static int rx_pga0_gain_to_iobits(double &gain){
     int iobits = ((~attn_code) << RX_ATTN_SHIFT) & RX_ATTN_MASK;
 
     UHD_LOGV(often) << boost::format(
-        "WBX Attenuation: %f dB, Code: %d, IO Bits %x, Mask: %x"
+        "WBX RX Attenuation: %f dB, Code: %d, IO Bits %x, Mask: %x"
     ) % attn % attn_code % (iobits & RX_ATTN_MASK) % RX_ATTN_MASK << std::endl;
 
     //the actual gain setting
@@ -159,6 +182,35 @@ static int rx_pga0_gain_to_iobits(double &gain){
     return iobits;
 }
 
+//v3 TX gains
+static int tx_pga0_gain_to_iobits(double &gain){
+    //clip the input
+    gain = wbx_v3_tx_gain_ranges["PGA0"].clip(gain);
+
+    //convert to attenuation
+    double attn = wbx_v3_tx_gain_ranges["PGA0"].stop() - gain;
+
+    //calculate the attenuation
+    int attn_code = boost::math::iround(attn);
+    int iobits = (
+            (attn_code & 16 ? 0 : TX_ATTN_16) |
+            (attn_code &  8 ? 0 : TX_ATTN_8) |
+            (attn_code &  4 ? 0 : TX_ATTN_4) |
+            (attn_code &  2 ? 0 : TX_ATTN_2) |
+            (attn_code &  1 ? 0 : TX_ATTN_1) 
+        ) & TX_ATTN_MASK;
+
+    UHD_LOGV(often) << boost::format(
+        "WBX TX Attenuation: %f dB, Code: %d, IO Bits %x, Mask: %x"
+    ) % attn % attn_code % (iobits & TX_ATTN_MASK) % TX_ATTN_MASK << std::endl;
+
+    //the actual gain setting
+    gain = wbx_v3_tx_gain_ranges["PGA0"].stop() - double(attn_code);
+
+    return iobits;
+}
+
+//Pre v3 TX gains
 static double tx_pga0_gain_to_dac_volts(double &gain){
     //clip the input
     gain = wbx_tx_gain_ranges["PGA0"].clip(gain);
@@ -181,15 +233,28 @@ static double tx_pga0_gain_to_dac_volts(double &gain){
 }
 
 void wbx_base::set_tx_gain(double gain, const std::string &name){
-    assert_has(wbx_tx_gain_ranges.keys(), name, "wbx tx gain name");
-    if(name == "PGA0"){
-        double dac_volts = tx_pga0_gain_to_dac_volts(gain);
-        _tx_gains[name] = gain;
+    if (is_v3()) {
+        assert_has(wbx_v3_tx_gain_ranges.keys(), name, "wbx tx gain name");
+        if(name == "PGA0"){
+            boost::uint16_t io_bits = tx_pga0_gain_to_iobits(gain);
+            _tx_gains[name] = gain;
 
-        //write the new voltage to the aux dac
-        this->get_iface()->write_aux_dac(dboard_iface::UNIT_TX, dboard_iface::AUX_DAC_A, dac_volts);
+            //write the new gain to tx gpio outputs
+            this->get_iface()->set_gpio_out(dboard_iface::UNIT_TX, io_bits, TX_ATTN_MASK);
+        }
+        else UHD_THROW_INVALID_CODE_PATH();
     }
-    else UHD_THROW_INVALID_CODE_PATH();
+    else {
+        assert_has(wbx_tx_gain_ranges.keys(), name, "wbx tx gain name");
+        if(name == "PGA0"){
+            double dac_volts = tx_pga0_gain_to_dac_volts(gain);
+            _tx_gains[name] = gain;
+
+            //write the new voltage to the aux dac
+            this->get_iface()->write_aux_dac(dboard_iface::UNIT_TX, dboard_iface::AUX_DAC_A, dac_volts);
+        }
+        else UHD_THROW_INVALID_CODE_PATH();
+    }
 }
 
 void wbx_base::set_rx_gain(double gain, const std::string &name){
@@ -381,6 +446,10 @@ bool wbx_base::get_locked(dboard_iface::unit_t unit){
     return (this->get_iface()->read_gpio(unit) & LOCKDET_MASK) != 0;
 }
 
+bool wbx_base::is_v3(void){
+    return get_rx_id().to_uint16() == 0x057;
+}
+
 /***********************************************************************
  * RX Get and Set
  **********************************************************************/
@@ -501,12 +570,21 @@ void wbx_base::tx_get(const wax::obj &key_, wax::obj &val){
         return;
 
     case SUBDEV_PROP_GAIN_RANGE:
-        assert_has(wbx_tx_gain_ranges.keys(), key.name, "wbx tx gain name");
-        val = wbx_tx_gain_ranges[key.name];
+        if (is_v3()) {
+            assert_has(wbx_v3_tx_gain_ranges.keys(), key.name, "wbx tx gain name");
+            val = wbx_v3_tx_gain_ranges[key.name];
+        }
+        else {
+            assert_has(wbx_tx_gain_ranges.keys(), key.name, "wbx tx gain name");
+            val = wbx_tx_gain_ranges[key.name];
+        }
         return;
 
     case SUBDEV_PROP_GAIN_NAMES:
-        val = prop_names_t(wbx_tx_gain_ranges.keys());
+        if (is_v3())
+            val = prop_names_t(wbx_v3_tx_gain_ranges.keys());
+        else
+            val = prop_names_t(wbx_tx_gain_ranges.keys());
         return;
 
     case SUBDEV_PROP_FREQ:

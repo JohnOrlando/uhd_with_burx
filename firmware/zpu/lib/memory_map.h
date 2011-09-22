@@ -126,7 +126,7 @@ typedef struct {
 typedef struct {
   volatile uint32_t _padding[8];
   volatile uint32_t status;
-  volatile uint32_t hw_config;	         // see below
+  volatile uint32_t _unused;
   volatile uint32_t time64_secs_rb;
   volatile uint32_t time64_ticks_rb;
   volatile uint32_t compat_num;
@@ -135,18 +135,13 @@ typedef struct {
 
 #define router_status ((router_status_t *) READBACK_BASE)
 
-// The hw_config register
-
-#define	HWC_SIMULATION		0x80000000
-#define	HWC_WB_CLK_DIV_MASK	0x0000000f
-
 /*!
  * \brief return non-zero if we're running under the simulator
  */
 inline static int
 hwconfig_simulation_p(void)
 {
-  return router_status->hw_config & HWC_SIMULATION;
+  return 0;
 }
 
 /*!
@@ -156,7 +151,7 @@ hwconfig_simulation_p(void)
 inline static int
 hwconfig_wishbone_divisor(void)
 {
-  return router_status->hw_config & HWC_WB_CLK_DIV_MASK;
+  return 2;
 }
 
 ///////////////////////////////////////////////////
@@ -407,6 +402,7 @@ typedef struct {
   volatile uint32_t rxlevel; // Number of available elements in the FIFO for reads
   volatile uint32_t txchar;  // Write characters to be sent here
   volatile uint32_t rxchar;  // Read received characters here
+  volatile uint32_t padding[3]; //what is this i don't even
 } uart_regs_t;
 
 #define uart_regs ((uart_regs_t *) UART_BASE)

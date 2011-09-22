@@ -16,18 +16,16 @@
 //
 
 // Antenna constants
-#define ANTSW_IO        ((1 << 5)|(1 << 15))    // on UNIT_TX, 0 = TX, 1 = RX, on UNIT_RX 0 = main ant, 1 = RX2
+#define ANTSW_IO        ((1 << 15))             // on UNIT_TX, 0 = TX, 1 = RX, on UNIT_RX 0 = main ant, 1 = RX2
 #define ANT_TX          0                       //the tx line is transmitting
 #define ANT_RX          ANTSW_IO                //the tx line is receiving
 #define ANT_TXRX        0                       //the rx line is on txrx
 #define ANT_RX2         ANTSW_IO                //the rx line in on rx2
-#define ANT_XX          0                       //dont care how the antenna is set
 
 #include "db_wbx_common.hpp"
 #include <uhd/utils/static.hpp>
 #include <uhd/utils/assert_has.hpp>
 #include <uhd/usrp/dboard_manager.hpp>
-#include <uhd/usrp/subdev_props.hpp>
 #include <boost/assign/list_of.hpp>
 
 using namespace uhd;
@@ -77,6 +75,8 @@ static dboard_base::sptr make_wbx_simple(dboard_base::ctor_args_t args){
 UHD_STATIC_BLOCK(reg_wbx_simple_dboards){
     dboard_manager::register_dboard(0x0053, 0x0052, &make_wbx_simple, "WBX");
     dboard_manager::register_dboard(0x0053, 0x004f, &make_wbx_simple, "WBX + Simple GDB");
+    dboard_manager::register_dboard(0x0057, 0x0056, &make_wbx_simple, "WBX v3");
+    dboard_manager::register_dboard(0x0057, 0x004f, &make_wbx_simple, "WBX v3 + Simple GDB");
 }
 
 /***********************************************************************
@@ -91,13 +91,13 @@ wbx_simple::wbx_simple(ctor_args_t args) : wbx_base(args){
     this->get_iface()->set_gpio_ddr(dboard_iface::UNIT_RX, ANTSW_IO, ANTSW_IO);
 
     //setup ATR for the antenna switches (constant)
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_IDLE,        ANT_XX, ANTSW_IO);
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_IDLE,        ANT_RX, ANTSW_IO);
     this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_RX_ONLY,     ANT_RX, ANTSW_IO);
     this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_TX_ONLY,     ANT_TX, ANTSW_IO);
     this->get_iface()->set_atr_reg(dboard_iface::UNIT_TX, dboard_iface::ATR_REG_FULL_DUPLEX, ANT_TX, ANTSW_IO);
 
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_IDLE,        ANT_XX, ANTSW_IO);
-    this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_RX_ONLY,     ANT_XX, ANTSW_IO);
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_IDLE,        ANT_TXRX, ANTSW_IO);
+    this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_TX_ONLY,     ANT_RX2, ANTSW_IO);
     this->get_iface()->set_atr_reg(dboard_iface::UNIT_RX, dboard_iface::ATR_REG_FULL_DUPLEX, ANT_RX2, ANTSW_IO);
 
     //set some default values
@@ -149,7 +149,10 @@ void wbx_simple::rx_get(const wax::obj &key_, wax::obj &val){
     //handle the get request conditioned on the key
     switch(key.as<subdev_prop_t>()){
     case SUBDEV_PROP_NAME:
-        val = std::string("WBX RX + Simple GDB");
+        if (is_v3())
+            val = std::string("WBX v3 RX + Simple GDB");
+        else
+            val = std::string("WBX RX + Simple GDB");
         return;
 
     case SUBDEV_PROP_FREQ:
@@ -203,7 +206,10 @@ void wbx_simple::tx_get(const wax::obj &key_, wax::obj &val){
     //handle the get request conditioned on the key
     switch(key.as<subdev_prop_t>()){
     case SUBDEV_PROP_NAME:
-        val = std::string("WBX TX + Simple GDB");
+        if (is_v3())
+            val = std::string("WBX v3 TX + Simple GDB");
+        else
+            val = std::string("WBX TX + Simple GDB");
         return;
 
     case SUBDEV_PROP_FREQ:

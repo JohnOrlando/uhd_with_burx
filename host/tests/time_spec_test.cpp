@@ -56,9 +56,9 @@ BOOST_AUTO_TEST_CASE(test_time_spec_parts){
     BOOST_CHECK_CLOSE(uhd::time_spec_t(1.1).get_frac_secs(), 0.1, 0.001);
     BOOST_CHECK_EQUAL(uhd::time_spec_t(1.1).get_tick_count(100), 10);
 
-    BOOST_CHECK_EQUAL(uhd::time_spec_t(-1.1).get_full_secs(), -1);
-    BOOST_CHECK_CLOSE(uhd::time_spec_t(-1.1).get_frac_secs(), -0.1, 0.001);
-    BOOST_CHECK_EQUAL(uhd::time_spec_t(-1.1).get_tick_count(100), -10);
+    BOOST_CHECK_EQUAL(uhd::time_spec_t(-1.1).get_full_secs(), -2);
+    BOOST_CHECK_CLOSE(uhd::time_spec_t(-1.1).get_frac_secs(), 0.9, 0.001);
+    BOOST_CHECK_EQUAL(uhd::time_spec_t(-1.1).get_tick_count(100), 90);
 }
 
 BOOST_AUTO_TEST_CASE(test_time_spec_get_system_time){
@@ -77,4 +77,23 @@ BOOST_AUTO_TEST_CASE(test_time_spec_get_system_time){
     std::cout << "diff: " << diff.get_real_secs() << std::endl;
     BOOST_CHECK(diff.get_real_secs() > 0); //assert positive
     BOOST_CHECK(diff.get_real_secs() < 1.0); //assert under 1s
+}
+
+BOOST_AUTO_TEST_CASE(test_time_spec_neg_values){
+    uhd::time_spec_t ts1(0.3);
+    uhd::time_spec_t ts2(1, -0.9);
+    std::cout << "ts1 " << ts1.get_real_secs() << std::endl;
+    std::cout << "ts2 " << ts2.get_real_secs() << std::endl;
+    BOOST_CHECK(ts1 > ts2);
+
+    uhd::time_spec_t tsa(430.001083);
+    uhd::time_spec_t tsb(429.999818);
+    uhd::time_spec_t tsc(0.3);
+    uhd::time_spec_t tsd = tsa - tsb;
+    std::cout << "tsa " << tsa.get_real_secs() << std::endl;
+    std::cout << "tsb " << tsb.get_real_secs() << std::endl;
+    std::cout << "tsc " << tsc.get_real_secs() << std::endl;
+    std::cout << "tsd " << tsd.get_real_secs() << std::endl;
+    BOOST_CHECK(tsa > tsb);
+    BOOST_CHECK(tsc > tsd);
 }

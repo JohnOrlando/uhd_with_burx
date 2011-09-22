@@ -26,7 +26,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 PROJECT(UHD CXX)
 ENABLE_TESTING()
-LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/Modules)
+LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 INCLUDE(UHDComponent) #enable components
 INCLUDE(UHDPackage)   #setup cpack
 
@@ -81,7 +81,7 @@ IF(CMAKE_COMPILER_IS_GNUCXX)
 ENDIF(CMAKE_COMPILER_IS_GNUCXX)
 
 IF(MSVC)
-    INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/msvc)
+    INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/cmake/msvc)
     ADD_DEFINITIONS( #stop all kinds of compatibility warnings
         -D_SCL_SECURE_NO_WARNINGS
         -D_SCL_SECURE_NO_DEPRECATE
@@ -129,7 +129,15 @@ IF(MSVC)
     ENDIF(BOOST_ALL_DYN_LINK)
 ENDIF(MSVC)
 
-SET(Boost_ADDITIONAL_VERSIONS "1.42.0" "1.42" "1.43.0" "1.43" "1.44.0" "1.44" "1.45.0" "1.45" "1.46.0" "1.46")
+SET(Boost_ADDITIONAL_VERSIONS
+    "1.35.0" "1.35" "1.36.0" "1.36" "1.37.0" "1.37" "1.38.0" "1.38" "1.39.0" "1.39"
+    "1.40.0" "1.40" "1.41.0" "1.41" "1.42.0" "1.42" "1.43.0" "1.43" "1.44.0" "1.44"
+    "1.45.0" "1.45" "1.46.0" "1.46" "1.47.0" "1.47" "1.48.0" "1.48" "1.49.0" "1.49"
+    "1.50.0" "1.50" "1.51.0" "1.51" "1.52.0" "1.52" "1.53.0" "1.53" "1.54.0" "1.54"
+    "1.55.0" "1.55" "1.56.0" "1.56" "1.57.0" "1.57" "1.58.0" "1.58" "1.59.0" "1.59"
+    "1.60.0" "1.60" "1.61.0" "1.61" "1.62.0" "1.62" "1.63.0" "1.63" "1.64.0" "1.64"
+    "1.65.0" "1.65" "1.66.0" "1.66" "1.67.0" "1.67" "1.68.0" "1.68" "1.69.0" "1.69"
+)
 FIND_PACKAGE(Boost 1.36 COMPONENTS ${BOOST_REQUIRED_COMPONENTS})
 
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
@@ -160,26 +168,12 @@ PYTHON_CHECK_MODULE(
 # Create Uninstall Target
 ########################################################################
 CONFIGURE_FILE(
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in
+    ${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
 @ONLY)
 
 ADD_CUSTOM_TARGET(uninstall
     ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
-)
-
-########################################################################
-# Create Pkg Config File
-########################################################################
-CONFIGURE_FILE(
-    ${CMAKE_CURRENT_SOURCE_DIR}/uhd.pc.in
-    ${CMAKE_CURRENT_BINARY_DIR}/uhd.pc
-@ONLY)
-
-INSTALL(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/uhd.pc
-    DESTINATION ${LIBRARY_DIR}/pkgconfig
-    COMPONENT libraries
 )
 
 ########################################################################
@@ -225,6 +219,48 @@ IF(ENABLE_UTILS)
 ENDIF(ENABLE_UTILS)
 
 ADD_SUBDIRECTORY(usrp_e_utils)
+
+########################################################################
+# Create Pkg Config File
+########################################################################
+#set other pkg-config configuration variables
+IF(ENABLE_USB)
+    LIST(APPEND UHD_PC_REQUIRES "libusb-1.0")
+ENDIF()
+
+IF(ENABLE_ORC)
+    LIST(APPEND UHD_PC_REQUIRES "orc-0.4")
+ENDIF()
+
+FOREACH(inc ${Boost_INCLUDE_DIRS})
+    LIST(APPEND UHD_PC_CFLAGS "-I${inc}")
+ENDFOREACH(inc)
+
+FOREACH(lib ${Boost_LIBRARY_DIRS})
+    LIST(APPEND UHD_PC_LIBS "-L${lib}")
+ENDFOREACH(lib)
+
+#use space-separation format for the pc file
+STRING(REPLACE ";" " " UHD_PC_REQUIRES "${UHD_PC_REQUIRES}")
+STRING(REPLACE ";" " " UHD_PC_CFLAGS "${UHD_PC_CFLAGS}")
+STRING(REPLACE ";" " " UHD_PC_LIBS "${UHD_PC_LIBS}")
+
+#unset these vars to avoid hard-coded paths to cross environment
+IF(CMAKE_CROSSCOMPILING)
+    UNSET(UHD_PC_CFLAGS)
+    UNSET(UHD_PC_LIBS)
+ENDIF(CMAKE_CROSSCOMPILING)
+
+CONFIGURE_FILE(
+    ${CMAKE_CURRENT_SOURCE_DIR}/uhd.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/uhd.pc
+@ONLY)
+
+INSTALL(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/uhd.pc
+    DESTINATION ${LIBRARY_DIR}/pkgconfig
+    COMPONENT libraries
+)
 
 ########################################################################
 # Handle pre-built images

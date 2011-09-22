@@ -1,11 +1,27 @@
+//
+// Copyright 2011 Ettus Research LLC
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 
 module dsp_core_tx
   #(parameter BASE=0)
   (input clk, input rst,
    input set_stb, input [7:0] set_addr, input [31:0] set_data,
 
-   output reg [15:0] dac_a,
-   output reg [15:0] dac_b,
+   output [23:0] tx_i, output [23:0] tx_q,
 
    // To tx_control
    input [31:0] sample,
@@ -20,7 +36,8 @@ module dsp_core_tx
    wire [7:0]  interp_rate;
    wire [3:0]  dacmux_a, dacmux_b;
    wire        enable_hb1, enable_hb2;
-
+   wire        rate_change;
+   
    setting_reg #(.my_addr(BASE+0)) sr_0
      (.clk(clk),.rst(rst),.strobe(set_stb),.addr(set_addr),
       .in(set_data),.out(phase_inc),.changed());
@@ -31,11 +48,7 @@ module dsp_core_tx
    
    setting_reg #(.my_addr(BASE+2), .width(10)) sr_2
      (.clk(clk),.rst(rst),.strobe(set_stb),.addr(set_addr),
-      .in(set_data),.out({enable_hb1, enable_hb2, interp_rate}),.changed());
-
-   setting_reg #(.my_addr(BASE+4), .width(8)) sr_4
-     (.clk(clk),.rst(rst),.strobe(set_stb),.addr(set_addr),
-      .in(set_data),.out({dacmux_b,dacmux_a}),.changed());
+      .in(set_data),.out({enable_hb1, enable_hb2, interp_rate}),.changed(rate_change));
 
    // Strobes are all now delayed by 1 cycle for timing reasons
    wire        strobe_cic_pre, strobe_hb1_pre, strobe_hb2_pre;
@@ -44,13 +57,13 @@ module dsp_core_tx
    reg 	       strobe_hb2 = 1;
    
    cic_strober #(.WIDTH(8))
-     cic_strober(.clock(clk),.reset(rst),.enable(run),.rate(interp_rate),
+     cic_strober(.clock(clk),.reset(rst),.enable(run & ~rate_change),.rate(interp_rate),
 		 .strobe_fast(1),.strobe_slow(strobe_cic_pre) );
    cic_strober #(.WIDTH(2))
-     hb2_strober(.clock(clk),.reset(rst),.enable(run),.rate(enable_hb2 ? 2 : 1),
+     hb2_strober(.clock(clk),.reset(rst),.enable(run & ~rate_change),.rate(enable_hb2 ? 2 : 1),
 		 .strobe_fast(strobe_cic_pre),.strobe_slow(strobe_hb2_pre) );
    cic_strober #(.WIDTH(2))
-     hb1_strober(.clock(clk),.reset(rst),.enable(run),.rate(enable_hb1 ? 2 : 1),
+     hb1_strober(.clock(clk),.reset(rst),.enable(run & ~rate_change),.rate(enable_hb1 ? 2 : 1),
 		 .strobe_fast(strobe_hb2_pre),.strobe_slow(strobe_hb1_pre) );
    
    always @(posedge clk) strobe_hb1 <= strobe_hb1_pre;
@@ -92,12 +105,12 @@ module dsp_core_tx
       .output_rate(interp_rate),.stb_out(strobe_cic),.data_out(hb2_q));
    
    cic_interp  #(.bw(18),.N(4),.log2_of_max_rate(7))
-     cic_interp_i(.clock(clk),.reset(rst),.enable(run),.rate(interp_rate),
+     cic_interp_i(.clock(clk),.reset(rst),.enable(run & ~rate_change),.rate(interp_rate),
 		  .strobe_in(strobe_cic),.strobe_out(1),
 		  .signal_in(hb2_i),.signal_out(i_interp));
    
    cic_interp  #(.bw(18),.N(4),.log2_of_max_rate(7))
-     cic_interp_q(.clock(clk),.reset(rst),.enable(run),.rate(interp_rate),
+     cic_interp_q(.clock(clk),.reset(rst),.enable(run & ~rate_change),.rate(interp_rate),
 		  .strobe_in(strobe_cic),.strobe_out(1),
 		  .signal_in(hb2_q),.signal_out(q_interp));
 
@@ -131,20 +144,9 @@ module dsp_core_tx
       .CE(1),  // Clock enable input
       .R(rst)     // Synchronous reset input
       );
-   
-   always @(posedge clk)
-     case(dacmux_a)
-       0 : dac_a <= prod_i[28:13];
-       1 : dac_a <= prod_q[28:13];
-       default : dac_a <= 0;
-     endcase // case(dacmux_a)
-   
-   always @(posedge clk)
-     case(dacmux_b)
-       0 : dac_b <= prod_i[28:13];
-       1 : dac_b <= prod_q[28:13];
-       default : dac_b <= 0;
-     endcase // case(dacmux_b)
+
+   assign tx_i = prod_i[28:5];
+   assign tx_q = prod_q[28:5];
    
    assign      debug = {strobe_cic, strobe_hb1, strobe_hb2,run};
 

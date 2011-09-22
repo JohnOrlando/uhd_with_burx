@@ -30,6 +30,8 @@
 
 namespace uhd{
 
+class property_tree; //forward declaration
+
 /*!
  * The usrp device interface represents the usrp hardware.
  * The api allows for discovery, configuration, and streaming.
@@ -196,6 +198,9 @@ public:
     virtual bool recv_async_msg(
         async_metadata_t &async_metadata, double timeout = 0.1
     ) = 0;
+
+    //! Get access to the underlying property structure
+    virtual boost::shared_ptr<property_tree> get_tree(void) const = 0;
 
 };
 

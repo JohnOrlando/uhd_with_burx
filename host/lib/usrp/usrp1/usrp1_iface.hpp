@@ -18,43 +18,27 @@
 #ifndef INCLUDED_USRP1_IFACE_HPP
 #define INCLUDED_USRP1_IFACE_HPP
 
-#include <uhd/usrp/mboard_iface.hpp>
+#include "fx2_ctrl.hpp"
+#include "wb_iface.hpp"
+#include <uhd/types/serial.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/utility.hpp>
-#include "usrp1_ctrl.hpp"
 
 /*!
  * The usrp1 interface class:
  * Provides a set of functions to implementation layer.
  * Including spi, peek, poke, control...
  */
-class usrp1_iface : public uhd::usrp::mboard_iface, boost::noncopyable{
+class usrp1_iface : public wb_iface, public uhd::i2c_iface, public uhd::spi_iface, boost::noncopyable{
 public:
     typedef boost::shared_ptr<usrp1_iface> sptr;
-
-    //motherboard eeprom map structure
-    uhd::usrp::mboard_eeprom_t mb_eeprom;
 
     /*!
      * Make a new usrp1 interface with the control transport.
      * \param ctrl_transport the usrp controller object
      * \return a new usrp1 interface object
      */
-    static sptr make(usrp_ctrl::sptr ctrl_transport);
-
-    /*!
-     * Perform a general USB firmware OUT operation
-     * \param request 
-     * \param value
-     * \param index 
-     * \param data 
-     * \return 
-     */
-    virtual void write_firmware_cmd(boost::uint8_t request,
-                                   boost::uint16_t value,
-                                   boost::uint16_t index,
-                                   unsigned char* buff,
-                                   boost::uint16_t length) = 0;
+    static sptr make(uhd::usrp::fx2_ctrl::sptr ctrl_transport);
 };
 
 #endif /* INCLUDED_USRP1_IFACE_HPP */

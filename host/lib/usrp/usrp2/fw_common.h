@@ -30,8 +30,9 @@ extern "C" {
 #endif
 
 //fpga and firmware compatibility numbers
-#define USRP2_FPGA_COMPAT_NUM 6
+#define USRP2_FPGA_COMPAT_NUM 7
 #define USRP2_FW_COMPAT_NUM 10
+#define USRP2_FW_VER_MINOR 4
 
 //used to differentiate control packets over data port
 #define USRP2_INVALID_VRT_HEADER 0
@@ -40,9 +41,14 @@ extern "C" {
 // Dynamic and/or private ports: 49152-65535
 #define USRP2_UDP_CTRL_PORT 49152
 //#define USRP2_UDP_UPDATE_PORT 49154
-#define USRP2_UDP_DSP0_PORT 49156
-#define USRP2_UDP_ERR0_PORT 49157
-#define USRP2_UDP_DSP1_PORT 49158
+#define USRP2_UDP_RX_DSP0_PORT 49156
+#define USRP2_UDP_TX_DSP0_PORT 49157
+#define USRP2_UDP_RX_DSP1_PORT 49158
+
+// Map for virtual firmware regs (not very big so we can keep it here for now)
+#define U2_FW_REG_LOCK_TIME 0
+#define U2_FW_REG_LOCK_GPID 1
+#define U2_FW_REG_VER_MINOR 7
 
 ////////////////////////////////////////////////////////////////////////
 // I2C addresses

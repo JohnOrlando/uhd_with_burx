@@ -19,15 +19,14 @@
 #define INCLUDED_USRP2_IFACE_HPP
 
 #include <uhd/transport/udp_simple.hpp>
-#include <uhd/usrp/mboard_iface.hpp>
+#include <uhd/types/serial.hpp>
+#include <uhd/usrp/mboard_eeprom.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/utility.hpp>
-#include <boost/cstdint.hpp>
 #include <boost/function.hpp>
-#include <utility>
-#include <string>
 #include "usrp2_regs.hpp"
-
+#include "wb_iface.hpp"
+#include <string>
 
 //TODO: kill this crap when you have the top level GPS include file
 typedef boost::function<void(std::string)> gps_send_fn_t;
@@ -38,7 +37,7 @@ typedef boost::function<std::string(void)> gps_recv_fn_t;
  * Provides a set of functions to implementation layer.
  * Including spi, peek, poke, control...
  */
-class usrp2_iface : public uhd::usrp::mboard_iface, boost::noncopyable{
+class usrp2_iface : public wb_iface, public uhd::spi_iface, public uhd::i2c_iface, public uhd::uart_iface{
 public:
     typedef boost::shared_ptr<usrp2_iface> sptr;
     /*!
@@ -56,7 +55,9 @@ public:
         USRP2_REV3 = 3,
         USRP2_REV4 = 4,
         USRP_N200 = 200,
+        USRP_N200_R4 = 201,
         USRP_N210 = 210,
+        USRP_N210_R4 = 211,
         USRP_NXXX = 0
     };
 
@@ -71,6 +72,9 @@ public:
 
     //! Is this device locked?
     virtual bool is_device_locked(void) = 0;
+
+    //! A version string for firmware
+    virtual const std::string get_fw_version_string(void) = 0;
 
     //motherboard eeprom map structure
     uhd::usrp::mboard_eeprom_t mb_eeprom;

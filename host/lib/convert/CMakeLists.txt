@@ -22,6 +22,41 @@ INCLUDE(CheckIncludeFileCXX)
 MESSAGE(STATUS "")
 
 ########################################################################
+# Look for Orc support
+########################################################################
+FIND_PACKAGE(PkgConfig)
+IF(PKG_CONFIG_FOUND)
+PKG_CHECK_MODULES(ORC "orc-0.4 > 0.4.11")
+ENDIF(PKG_CONFIG_FOUND)
+
+FIND_PROGRAM(ORCC_EXECUTABLE orcc)
+
+LIBUHD_REGISTER_COMPONENT("ORC" ENABLE_ORC ON "ENABLE_LIBUHD;ORC_FOUND;ORCC_EXECUTABLE" OFF)
+
+IF(ENABLE_ORC)
+    INCLUDE_DIRECTORIES(${ORC_INCLUDE_DIRS})
+    LINK_DIRECTORIES(${ORC_LIBRARY_DIRS})
+    ENABLE_LANGUAGE(C)
+
+    SET(orcc_src ${CMAKE_CURRENT_SOURCE_DIR}/convert_orc.orc)
+
+    GET_FILENAME_COMPONENT(orc_file_name_we ${orcc_src} NAME_WE)
+    SET(orcc_gen ${CMAKE_CURRENT_BINARY_DIR}/${orc_file_name_we}.c)
+    MESSAGE(STATUS "Orc found, enabling Orc support.")
+    ADD_CUSTOM_COMMAND(
+        COMMAND ${ORCC_EXECUTABLE} --implementation -o ${orcc_gen} ${orcc_src}
+        DEPENDS ${orcc_src} OUTPUT ${orcc_gen}
+    )
+    LIBUHD_APPEND_SOURCES(${orcc_gen})
+    LIBUHD_APPEND_SOURCES(
+        ${CMAKE_CURRENT_SOURCE_DIR}/convert_with_orc.cpp
+    )
+    LIBUHD_APPEND_LIBS(${ORC_LIBRARIES})
+ELSE(ENABLE_ORC)
+    MESSAGE(STATUS "Orc not found, disabling orc support.")
+ENDIF(ENABLE_ORC)
+
+########################################################################
 # Check for SSE2 SIMD headers
 ########################################################################
 IF(CMAKE_COMPILER_IS_GNUCXX)
@@ -35,24 +70,40 @@ CHECK_INCLUDE_FILE_CXX(emmintrin.h HAVE_EMMINTRIN_H)
 UNSET(CMAKE_REQUIRED_FLAGS)
 
 IF(HAVE_EMMINTRIN_H)
+    SET(convert_with_sse2_sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/convert_fc32_with_sse2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/convert_fc64_with_sse2.cpp
+    )
     SET_SOURCE_FILES_PROPERTIES(
-        ${CMAKE_CURRENT_SOURCE_DIR}/convert_with_sse2.cpp
+        ${convert_with_sse2_sources}
         PROPERTIES COMPILE_FLAGS "${EMMINTRIN_FLAGS}"
     )
-    LIBUHD_APPEND_SOURCES(
-        ${CMAKE_CURRENT_SOURCE_DIR}/convert_with_sse2.cpp
-    )
+    LIBUHD_APPEND_SOURCES(${convert_with_sse2_sources})
 ENDIF(HAVE_EMMINTRIN_H)
 
 ########################################################################
 # Check for NEON SIMD headers
 ########################################################################
-CHECK_INCLUDE_FILE_CXX(arm_neon.h HAVE_ARM_NEON_H)
-IF(HAVE_ARM_NEON_H)
+IF(CMAKE_COMPILER_IS_GNUCXX)
+    SET(NEON_FLAGS "-mfloat-abi=softfp -mfpu=neon")
+    SET(CMAKE_REQUIRED_FLAGS ${NEON_FLAGS})
+    CHECK_INCLUDE_FILE_CXX(arm_neon.h HAVE_ARM_NEON_H)
+    UNSET(CMAKE_REQUIRED_FLAGS)
+ENDIF(CMAKE_COMPILER_IS_GNUCXX)
+
+IF(HAVE_ARM_NEON_H AND ENABLE_ORC)
+    #prefer orc support, its faster than the current intrinsic implementations
+    MESSAGE(STATUS "Enabled conversion support with ORC.")
+ELSEIF(HAVE_ARM_NEON_H)
+    MESSAGE(STATUS "Enabled conversion support with NEON intrinsics.")
+    SET_SOURCE_FILES_PROPERTIES(
+        ${CMAKE_CURRENT_SOURCE_DIR}/convert_with_neon.cpp
+        PROPERTIES COMPILE_FLAGS "${NEON_FLAGS}"
+    )
     LIBUHD_APPEND_SOURCES(
         ${CMAKE_CURRENT_SOURCE_DIR}/convert_with_neon.cpp
     )
-ENDIF(HAVE_ARM_NEON_H)
+ENDIF()
 
 ########################################################################
 # Convert types generation

@@ -50,12 +50,12 @@
 #include "max2829_regs.hpp"
 #include <uhd/utils/log.hpp>
 #include <uhd/utils/static.hpp>
+#include <uhd/utils/safe_call.hpp>
 #include <uhd/utils/assert_has.hpp>
 #include <uhd/utils/algorithm.hpp>
 #include <uhd/types/ranges.hpp>
 #include <uhd/types/sensors.hpp>
 #include <uhd/types/dict.hpp>
-#include <uhd/usrp/subdev_props.hpp>
 #include <uhd/usrp/dboard_base.hpp>
 #include <uhd/usrp/dboard_manager.hpp>
 #include <boost/assign/list_of.hpp>
@@ -114,6 +114,7 @@ private:
     max2829_regs_t _max2829_regs;
 
     void set_lo_freq(double target_freq);
+    void set_lo_freq_core(double target_freq);
     void set_tx_ant(const std::string &ant);
     void set_rx_ant(const std::string &ant);
     void set_tx_gain(double gain, const std::string &name);
@@ -234,7 +235,7 @@ xcvr2450::xcvr2450(ctor_args_t args) : xcvr_dboard_base(args){
 }
 
 xcvr2450::~xcvr2450(void){
-    spi_reset();
+    UHD_SAFE_CALL(spi_reset();)
 }
 
 void xcvr2450::spi_reset(void){
@@ -274,6 +275,16 @@ void xcvr2450::update_atr(void){
  * Tuning
  **********************************************************************/
 void xcvr2450::set_lo_freq(double target_freq){
+    //tune the LO and sleep a bit for lock
+    //if not locked, try some carrier offsets
+    for (double offset = 0.0; offset <= 3e6; offset+=1e6){
+        this->set_lo_freq_core(target_freq + offset);
+        boost::this_thread::sleep(boost::posix_time::milliseconds(50));
+        if (this->get_locked()) return;
+    }
+}
+
+void xcvr2450::set_lo_freq_core(double target_freq){
 
     //clip the input to the range
     target_freq = xcvr_freq_range.clip(target_freq);

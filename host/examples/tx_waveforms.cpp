@@ -21,8 +21,8 @@
 #include <uhd/usrp/multi_usrp.hpp>
 #include <boost/program_options.hpp>
 #include <boost/math/special_functions/round.hpp>
+#include <boost/foreach.hpp>
 #include <boost/format.hpp>
-#include <boost/function.hpp>
 #include <iostream>
 #include <complex>
 #include <csignal>
@@ -30,36 +30,61 @@
 
 namespace po = boost::program_options;
 
+/***********************************************************************
+ * Signal handlers
+ **********************************************************************/
 static bool stop_signal_called = false;
 void sig_int_handler(int){stop_signal_called = true;}
 
 /***********************************************************************
  * Waveform generators
  **********************************************************************/
-float gen_const(float){
-    return 1;
-}
+static const size_t wave_table_len = 8192;
 
-float gen_square(float x){
-    return float((std::fmod(x, 1) < float(0.5))? 0 : 1);
-}
+class wave_table_class{
+public:
+    wave_table_class(const std::string &wave_type, const float ampl):
+        _wave_table(wave_table_len)
+    {
+        //compute real wave table with 1.0 amplitude
+        std::vector<double> real_wave_table(wave_table_len);
+        if (wave_type == "CONST"){
+            for (size_t i = 0; i < wave_table_len; i++)
+                real_wave_table[i] = 1.0;
+        }
+        else if (wave_type == "SQUARE"){
+            for (size_t i = 0; i < wave_table_len; i++)
+                real_wave_table[i] = (i < wave_table_len/2)? 0.0 : 1.0;
+        }
+        else if (wave_type == "RAMP"){
+            for (size_t i = 0; i < wave_table_len; i++)
+                real_wave_table[i] = 2.0*i/(wave_table_len-1) - 1.0;
+        }
+        else if (wave_type == "SINE"){
+            static const double tau = 2*std::acos(-1.0);
+            for (size_t i = 0; i < wave_table_len; i++)
+                real_wave_table[i] = std::sin((tau*i)/wave_table_len);
+        }
+        else throw std::runtime_error("unknown waveform type: " + wave_type);
 
-float gen_ramp(float x){
-    return std::fmod(x, 1)*2 - 1;
-}
+        //compute i and q pairs with 90% offset and scale to amplitude
+        for (size_t i = 0; i < wave_table_len; i++){
+            const size_t q = (i+(3*wave_table_len)/4)%wave_table_len;
+            _wave_table[i] = std::complex<float>(ampl*real_wave_table[i], ampl*real_wave_table[q]);
+        }
+    }
 
-#define sine_table_len 2048
-static float sine_table[sine_table_len];
-UHD_STATIC_BLOCK(gen_sine_table){
-    static const double tau = 2*std::acos(-1.0);
-    for (size_t i = 0; i < sine_table_len; i++)
-        sine_table[i] = float(std::sin((tau*i)/sine_table_len));
-}
+    inline std::complex<float> operator()(const double theta) const{
+        return _wave_table[unsigned(boost::math::iround(theta*wave_table_len))%wave_table_len];
+    }
 
-float gen_sine(float x){
-    return sine_table[size_t(x*sine_table_len)%sine_table_len];
-}
+private:
+    std::vector<std::complex<float> > _wave_table;
+};
 
+/***********************************************************************
+ * Main function
+ **********************************************************************/
 int UHD_SAFE_MAIN(int argc, char *argv[]){
     uhd::set_thread_priority_safe();
 
@@ -119,26 +144,29 @@ int UHD_SAFE_MAIN(int argc, char *argv[]){
         std::cerr << "Please specify the center frequency with --freq" << std::endl;
         return ~0;
     }
-    std::cout << boost::format("Setting TX Freq: %f MHz...") % (freq/1e6) << std::endl;
-    usrp->set_tx_freq(freq);
-    std::cout << boost::format("Actual TX Freq: %f MHz...") % (usrp->get_tx_freq()/1e6) << std::endl << std::endl;
 
-    //set the rf gain
-    if (vm.count("gain")){
-        std::cout << boost::format("Setting TX Gain: %f dB...") % gain << std::endl;
-        usrp->set_tx_gain(gain);
-        std::cout << boost::format("Actual TX Gain: %f dB...") % usrp->get_tx_gain() << std::endl << std::endl;
+    for(size_t chan = 0; chan < usrp->get_tx_num_channels(); chan++) {
+        std::cout << boost::format("Setting TX Freq: %f MHz...") % (freq/1e6) << std::endl;
+        usrp->set_tx_freq(freq, chan);
+        std::cout << boost::format("Actual TX Freq: %f MHz...") % (usrp->get_tx_freq(chan)/1e6) << std::endl << std::endl;
+
+        //set the rf gain
+        if (vm.count("gain")){
+            std::cout << boost::format("Setting TX Gain: %f dB...") % gain << std::endl;
+            usrp->set_tx_gain(gain, chan);
+            std::cout << boost::format("Actual TX Gain: %f dB...") % usrp->get_tx_gain(chan) << std::endl << std::endl;
+        }
+
+        //set the IF filter bandwidth
+        if (vm.count("bw")){
+            std::cout << boost::format("Setting TX Bandwidth: %f MHz...") % bw << std::endl;
+            usrp->set_tx_bandwidth(bw, chan);
+            std::cout << boost::format("Actual TX Bandwidth: %f MHz...") % usrp->get_tx_bandwidth(chan) << std::endl << std::endl;
+        }
+
+        //set the antenna
+        if (vm.count("ant")) usrp->set_tx_antenna(ant, chan);
     }
-
-    //set the IF filter bandwidth
-    if (vm.count("bw")){
-        std::cout << boost::format("Setting TX Bandwidth: %f MHz...") % bw << std::endl;
-        usrp->set_tx_bandwidth(bw);
-        std::cout << boost::format("Actual TX Bandwidth: %f MHz...") % usrp->get_tx_bandwidth() << std::endl << std::endl;
-    }
-
-    //set the antenna
-    if (vm.count("ant")) usrp->set_tx_antenna(ant);
 
     //for the const wave, set the wave freq for small samples per period
     if (wave_freq == 0 and wave_type == "CONST"){
@@ -149,43 +177,37 @@ int UHD_SAFE_MAIN(int argc, char *argv[]){
     if (std::abs(wave_freq) > usrp->get_tx_rate()/2){
         throw std::runtime_error("wave freq out of Nyquist zone");
     }
-    if (usrp->get_tx_rate()/std::abs(wave_freq) > sine_table_len/2 and wave_type == "SINE"){
-        throw std::runtime_error("sine freq too small for table");
+    if (usrp->get_tx_rate()/std::abs(wave_freq) > wave_table_len/2){
+        throw std::runtime_error("wave freq too small for table");
     }
 
-    //store the generator function for the selected waveform
-    boost::function<float(float)> wave_gen;
-    if      (wave_type == "CONST")  wave_gen = &gen_const;
-    else if (wave_type == "SQUARE") wave_gen = &gen_square;
-    else if (wave_type == "RAMP")   wave_gen = &gen_ramp;
-    else if (wave_type == "SINE")   wave_gen = &gen_sine;
-    else throw std::runtime_error("unknown waveform type: " + wave_type);
+    //pre-compute the waveform values
+    const wave_table_class wave_table(wave_type, ampl);
+    const double cps = wave_freq/usrp->get_tx_rate();
+    double theta = 0;
 
-    //allocate the buffer and precalculate values
+    //allocate a buffer which we re-use for each channel
     std::vector<std::complex<float> > buff(spb);
-    const float cps = float(wave_freq/usrp->get_tx_rate());
-    const float i_off = (wave_freq > 0)? float(0.25) : 0;
-    const float q_off = (wave_freq < 0)? float(0.25) : 0;
-    float theta = 0;
+    std::vector<std::complex<float> *> buffs(usrp->get_tx_num_channels(), &buff.front());
 
     //setup the metadata flags
     uhd::tx_metadata_t md;
-    md.start_of_burst = false; //never SOB when continuous
+    md.start_of_burst = true;
     md.end_of_burst   = false;
+    md.has_time_spec  = true;
+    md.time_spec = uhd::time_spec_t(0.1);
+
+    std::cout << boost::format("Setting device timestamp to 0...") << std::endl;
+    usrp->set_time_now(uhd::time_spec_t(0.0));
 
     std::signal(SIGINT, &sig_int_handler);
     std::cout << "Press Ctrl + C to stop streaming..." << std::endl;
 
     //send data until the signal handler gets called
     while(not stop_signal_called){
-
         //fill the buffer with the waveform
         for (size_t n = 0; n < buff.size(); n++){
-            buff[n] = std::complex<float>(
-                ampl*wave_gen(i_off + theta),
-                ampl*wave_gen(q_off + theta)
-            );
-            theta += cps;
+            buff[n] = wave_table(theta += cps);
         }
 
         //bring the theta back into range [0, 1)
@@ -193,15 +215,17 @@ int UHD_SAFE_MAIN(int argc, char *argv[]){
 
         //send the entire contents of the buffer
         usrp->get_device()->send(
-            &buff.front(), buff.size(), md,
+            buffs, buff.size(), md,
             uhd::io_type_t::COMPLEX_FLOAT32,
             uhd::device::SEND_MODE_FULL_BUFF
         );
+
+        md.start_of_burst = false;
+        md.has_time_spec = false;
     }
 
     //send a mini EOB packet
-    md.start_of_burst = false;
-    md.end_of_burst   = true;
+    md.end_of_burst = true;
     usrp->get_device()->send("", 0, md,
         uhd::io_type_t::COMPLEX_FLOAT32,
         uhd::device::SEND_MODE_FULL_BUFF
@@ -209,6 +233,5 @@ int UHD_SAFE_MAIN(int argc, char *argv[]){
 
     //finished
     std::cout << std::endl << "Done!" << std::endl << std::endl;
-
     return 0;
 }

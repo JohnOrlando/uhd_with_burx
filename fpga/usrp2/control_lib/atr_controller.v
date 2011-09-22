@@ -1,3 +1,20 @@
+//
+// Copyright 2011 Ettus Research LLC
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 
 // Automatic transmit/receive switching of control pins to daughterboards
 // Store everything in registers for now, but could use a RAM for more
@@ -27,8 +44,11 @@ module atr_controller
 	    atr_ram[adr_i[5:2]][7:0] <= dat_i[7:0];
        end // if (we_i & stb_i & cyc_i)
 
-   always @(posedge clk_i)
-     dat_o <= atr_ram[adr_i[5:2]];
+   // Removing readback allows ram to be synthesized as LUTs instead of regs
+   //always @(posedge clk_i)
+   //  dat_o <= atr_ram[adr_i[5:2]];
+   always
+     dat_o <= 32'd0;
    
    always @(posedge clk_i)
      ack_o <= stb_i & cyc_i & ~ack_o;

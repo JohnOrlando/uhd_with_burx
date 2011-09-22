@@ -84,14 +84,11 @@ int UHD_SAFE_MAIN(int argc, char *argv[]){
     md.time_spec = uhd::time_spec_t(seconds_in_future);
 
     //the first call to send() will block this many seconds before sending:
-    double timeout = seconds_in_future + 0.1; //timeout (delay before transmit + padding)
+    const double timeout = seconds_in_future + 0.1; //timeout (delay before transmit + padding)
 
     size_t num_acc_samps = 0; //number of accumulated samples
     while(num_acc_samps < total_num_samps){
         size_t samps_to_send = std::min(total_num_samps - num_acc_samps, buff.size());
-
-        //ensure the the last packet has EOB set
-        md.end_of_burst = samps_to_send <= buff.size();
 
         //send a single packet
         size_t num_tx_samps = usrp->get_device()->send(
@@ -109,11 +106,18 @@ int UHD_SAFE_MAIN(int argc, char *argv[]){
         num_acc_samps += num_tx_samps;
     }
 
+    //send a mini EOB packet
+    md.end_of_burst   = true;
+    usrp->get_device()->send("", 0, md,
+        uhd::io_type_t::COMPLEX_FLOAT32,
+        uhd::device::SEND_MODE_FULL_BUFF
+    );
+
     std::cout << std::endl << "Waiting for async burst ACK... " << std::flush;
     uhd::async_metadata_t async_md;
     bool got_async_burst_ack = false;
     //loop through all messages for the ACK packet (may have underflow messages in queue)
-    while (not got_async_burst_ack and usrp->get_device()->recv_async_msg(async_md, seconds_in_future)){
+    while (not got_async_burst_ack and usrp->get_device()->recv_async_msg(async_md, timeout)){
         got_async_burst_ack = (async_md.event_code == uhd::async_metadata_t::EVENT_CODE_BURST_ACK);
     }
     std::cout << (got_async_burst_ack? "success" : "fail") << std::endl;

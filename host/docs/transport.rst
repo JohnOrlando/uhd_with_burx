@@ -19,7 +19,8 @@ The transport parameters are defined below for the various transports in the UHD
 ------------------------------------------------------------------------
 UDP transport (sockets)
 ------------------------------------------------------------------------
-The UDP transport is implemented with standard user-space/Berkeley sockets.
+The UDP transport is implemented with user-space sockets.
+This means standard Berkeley sockets API using send()/recv().
 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Transport parameters
@@ -31,9 +32,14 @@ The following parameters can be used to alter the transport's default behavior:
 * **send_frame_size:** The size of a single send buffer in bytes
 * **num_send_frames:** The number of send buffers to allocate
 
-**Note1:** num_recv_frames and num_send_frames do not affect performance.
+**Note1:**
+num_recv_frames does not affect performance (all platforms).
 
-**Note2:** recv_frame_size and send_frame_size can be used to
+**Note2:**
+num_send_frames does not affect performance (UNIX only).
+
+**Note3:**
+recv_frame_size and send_frame_size can be used to
 increase or decrease the maximum number of samples per packet.
 The frame sizes default to an MTU of 1472 bytes per IP/UDP packet,
 and may be increased if permitted by your network hardware.
@@ -65,6 +71,25 @@ The following parameters can be used to alter socket's buffer sizes:
 **Note:** Large send buffers tend to decrease transmit performance.
 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Latency Optimization
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Latency is a measurement of the time it takes a sample to travel between the host and device.
+Most computer hardware and software is bandwidth optimized which may negatively affect latency.
+If your application has strict latency requirements, please consider the following notes:
+
+**Note1:**
+The time taken by the device to populate a packet is proportional to the sample rate.
+Therefore, to improve receive latency, configure the transport for a smaller frame size.
+
+**Note2:**
+For overall latency improvements,
+look for "Interrupt Coalescing" settings for your OS and ethernet chipset.
+It seems the Intel ethernet chipsets offer fine-grained control in Linux.
+Also, consult:
+
+* http://publib.boulder.ibm.com/infocenter/pseries/v5r3/index.jsp?topic=/com.ibm.aix.prftungd/doc/prftungd/interrupt_coal.htm
+
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Linux specific notes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 On linux, the maximum buffer sizes are capped by the sysctl values
@@ -77,14 +102,20 @@ To change the maximum values, run the following commands:
 
 Set the values permanently by editing */etc/sysctl.conf*
 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Windows specific notes
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+On Windows, it is important to change the default UDP behavior such that
+1500 byte packets still travel through the fast path of the sockets stack.
+FastSendDatagramThreshold registry key to change documented here:
+
+* http://www.microsoft.com/windows/windowsmedia/howto/articles/optimize_web.aspx#appendix_e
+
 ------------------------------------------------------------------------
 USB transport (libusb)
 ------------------------------------------------------------------------
 The USB transport is implemented with libusb.
 Libusb provides an asynchronous API for USB bulk transfers.
-The transport implementation allocates a number of buffers
-and submits asynchronous requests through libusb.
-Event handler threads run in the background to process these requests.
 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Transport parameters
@@ -95,4 +126,28 @@ The following parameters can be used to alter the transport's default behavior:
 * **num_recv_frames:** The number of simultaneous receive transfers
 * **send_frame_size:** The size of a single send transfers in bytes
 * **num_send_frames:** The number of simultaneous send transfers
-* **concurrency_hint:** The number of threads to run the event handler
+
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Setup Udev for USB (Linux)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+On Linux, Udev handles USB plug and unplug events.
+The following commands install a Udev rule
+so that non-root users may access the device:
+
+::
+
+    cd <install-path>/share/uhd/utils
+    sudo cp uhd-usrp.rules /etc/udev/rules.d/
+    sudo udevadm control --reload-rules
+
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Install USB driver (Windows)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+A driver package must be installed to use a USB-based product with UHD:
+
+* Download the driver from the UHD wiki page.
+* Unzip the file into a known location. We will refer to this as the <directory>.
+* Open the device manager and plug-in the USRP. You will see an unrecognized USB device in the device manager.
+* Right click on the unrecognized USB device and select update/install driver software (may vary for your OS).
+* In the driver installation wizard, select "browse for driver", browse to the <directory>, and select the .inf file.
+* Continue through the installation wizard until the driver is installed.

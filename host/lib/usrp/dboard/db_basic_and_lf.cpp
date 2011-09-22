@@ -15,7 +15,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <uhd/usrp/subdev_props.hpp>
 #include <uhd/types/dict.hpp>
 #include <uhd/types/ranges.hpp>
 #include <uhd/utils/assert_has.hpp>
@@ -111,6 +110,7 @@ basic_rx::basic_rx(ctor_args_t args, double max_freq) : rx_dboard_base(args){
     this->get_iface()->set_pin_ctrl(dboard_iface::UNIT_RX, 0x0000);
     this->get_iface()->set_gpio_ddr(dboard_iface::UNIT_RX, 0xFFFF);
     this->get_iface()->set_gpio_out(dboard_iface::UNIT_RX, 0x0000);
+    this->get_iface()->set_clock_enabled(dboard_iface::UNIT_RX, true);
 }
 
 basic_rx::~basic_rx(void){
@@ -159,6 +159,10 @@ void basic_rx::rx_get(const wax::obj &key_, wax::obj &val){
 
     case SUBDEV_PROP_ANTENNA_NAMES:
         val = prop_names_t(1, ""); //vector of 1 empty string
+        return;
+
+    case SUBDEV_PROP_SENSOR_NAMES:
+        val = std::vector<std::string>(); //empty
         return;
 
     case SUBDEV_PROP_CONNECTION:
@@ -216,6 +220,7 @@ void basic_rx::rx_set(const wax::obj &key_, const wax::obj &val){
  **********************************************************************/
 basic_tx::basic_tx(ctor_args_t args, double max_freq) : tx_dboard_base(args){
     _max_freq = max_freq;
+    this->get_iface()->set_clock_enabled(dboard_iface::UNIT_TX, true);
 }
 
 basic_tx::~basic_tx(void){
@@ -264,6 +269,10 @@ void basic_tx::tx_get(const wax::obj &key_, wax::obj &val){
 
     case SUBDEV_PROP_ANTENNA_NAMES:
         val = prop_names_t(1, ""); //vector of 1 empty string
+        return;
+
+    case SUBDEV_PROP_SENSOR_NAMES:
+        val = std::vector<std::string>(); //empty
         return;
 
     case SUBDEV_PROP_CONNECTION:

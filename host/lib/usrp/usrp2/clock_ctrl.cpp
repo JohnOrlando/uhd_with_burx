@@ -19,6 +19,7 @@
 #include "ad9510_regs.hpp"
 #include "usrp2_regs.hpp" //spi slave constants
 #include "usrp2_clk_regs.hpp"
+#include <uhd/utils/safe_call.hpp>
 #include <uhd/utils/assert_has.hpp>
 #include <boost/cstdint.hpp>
 #include <boost/lexical_cast.hpp>
@@ -77,7 +78,7 @@ public:
         this->enable_test_clock(enb_test_clk);
     }
 
-    ~usrp2_clock_ctrl_impl(void){
+    ~usrp2_clock_ctrl_impl(void){UHD_SAFE_CALL(
         //power down clock outputs
         this->enable_external_ref(false);
         this->enable_rx_dboard_clock(false);
@@ -86,7 +87,7 @@ public:
         this->enable_adc_clock(false);
         this->enable_mimo_clock_out(false);
         this->enable_test_clock(false);
-    }
+    )}
 
     void enable_mimo_clock_out(bool enb){
         //calculate the low and high dividers
@@ -136,11 +137,23 @@ public:
 
     //uses output clock 7 (cmos)
     void enable_rx_dboard_clock(bool enb){
-        _ad9510_regs.power_down_lvds_cmos_out7 = enb? 0 : 1;
-        _ad9510_regs.lvds_cmos_select_out7 = ad9510_regs_t::LVDS_CMOS_SELECT_OUT7_CMOS;
-        _ad9510_regs.output_level_lvds_out7 = ad9510_regs_t::OUTPUT_LEVEL_LVDS_OUT7_1_75MA;
-        this->write_reg(clk_regs.output(clk_regs.rx_db));
-        this->update_regs();
+        switch(_iface->get_rev()) {
+            case usrp2_iface::USRP_N200_R4:
+            case usrp2_iface::USRP_N210_R4:
+                _ad9510_regs.power_down_lvds_cmos_out7 = enb? 0 : 1;
+                _ad9510_regs.lvds_cmos_select_out7 = ad9510_regs_t::LVDS_CMOS_SELECT_OUT7_LVDS;
+                _ad9510_regs.output_level_lvds_out7 = ad9510_regs_t::OUTPUT_LEVEL_LVDS_OUT7_1_75MA;
+                this->write_reg(clk_regs.output(clk_regs.rx_db));
+                this->update_regs();
+                break;
+            default:
+                _ad9510_regs.power_down_lvds_cmos_out7 = enb? 0 : 1;
+                _ad9510_regs.lvds_cmos_select_out7 = ad9510_regs_t::LVDS_CMOS_SELECT_OUT7_CMOS;
+                _ad9510_regs.output_level_lvds_out7 = ad9510_regs_t::OUTPUT_LEVEL_LVDS_OUT7_1_75MA;
+                this->write_reg(clk_regs.output(clk_regs.rx_db));
+                this->update_regs();
+                break;
+        }
     }
 
     void set_rate_rx_dboard_clock(double rate){

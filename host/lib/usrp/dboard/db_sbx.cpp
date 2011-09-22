@@ -74,7 +74,6 @@
 
 #include "adf4350_regs.hpp"
 #include <uhd/types/dict.hpp>
-#include <uhd/usrp/subdev_props.hpp>
 #include <uhd/types/ranges.hpp>
 #include <uhd/types/sensors.hpp>
 #include <uhd/utils/assert_has.hpp>
@@ -96,7 +95,7 @@ using namespace boost::assign;
 /***********************************************************************
  * The SBX dboard constants
  **********************************************************************/
-static const freq_range_t sbx_freq_range(68.75e6, 4.4e9);
+static const freq_range_t sbx_freq_range(400e6, 4.4e9);
 
 static const freq_range_t sbx_tx_lo_2dbm = list_of
     (range_t(0.35e9, 0.37e9))

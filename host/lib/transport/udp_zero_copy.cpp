@@ -33,20 +33,44 @@ namespace asio = boost::asio;
 static const size_t DEFAULT_NUM_FRAMES = 32;
 
 /***********************************************************************
+ * Check registry for correct fast-path setting (windows only)
+ **********************************************************************/
+#ifdef UHD_PLATFORM_WIN32
+#include <atlbase.h> //CRegKey
+static void check_registry_for_fast_send_threshold(const size_t mtu){
+    static bool warned = false;
+    if (warned) return; //only allow one printed warning per process
+
+    CRegKey reg_key;
+    DWORD threshold = 1024; //system default when threshold is not specified
+    if (
+        reg_key.Open(HKEY_LOCAL_MACHINE, "System\\CurrentControlSet\\Services\\AFD\\Parameters", KEY_READ) != ERROR_SUCCESS or
+        reg_key.QueryDWORDValue("FastSendDatagramThreshold", threshold) != ERROR_SUCCESS or threshold < mtu
+    ){
+        UHD_MSG(warning) << boost::format(
+            "The MTU (%d) is larger than the FastSendDatagramThreshold (%d)!\n"
+            "This will negatively affect the transmit performance.\n"
+            "See the transport application notes for more detail.\n"
+        ) % mtu % threshold << std::endl;
+        warned = true;
+    }
+    reg_key.Close();
+}
+#endif /*UHD_PLATFORM_WIN32*/
+
+/***********************************************************************
  * Reusable managed receiver buffer:
  *  - Initialize with memory and a release callback.
  *  - Call get new with a length in bytes to re-use.
  **********************************************************************/
 class udp_zero_copy_asio_mrb : public managed_recv_buffer{
 public:
-    typedef boost::function<void(udp_zero_copy_asio_mrb *)> release_cb_type;
-
-    udp_zero_copy_asio_mrb(void *mem, const release_cb_type &release_cb):
-        _mem(mem), _len(0), _release_cb(release_cb){/* NOP */}
+    udp_zero_copy_asio_mrb(void *mem, bounded_buffer<udp_zero_copy_asio_mrb *> &pending):
+        _mem(mem), _len(0), _pending(pending){/* NOP */}
 
     void release(void){
         if (_len == 0) return;
-        this->_release_cb(this);
+        _pending.push_with_haste(this);
         _len = 0;
     }
 
@@ -63,7 +87,7 @@ private:
 
     void *_mem;
     size_t _len;
-    release_cb_type _release_cb;
+    bounded_buffer<udp_zero_copy_asio_mrb *> &_pending;
 };
 
 /***********************************************************************
@@ -73,14 +97,13 @@ private:
  **********************************************************************/
 class udp_zero_copy_asio_msb : public managed_send_buffer{
 public:
-    typedef boost::function<void(udp_zero_copy_asio_msb *, size_t)> commit_cb_type;
-
-    udp_zero_copy_asio_msb(void *mem, const commit_cb_type &commit_cb):
-        _mem(mem), _len(0), _commit_cb(commit_cb){/* NOP */}
+    udp_zero_copy_asio_msb(void *mem, bounded_buffer<udp_zero_copy_asio_msb *> &pending, int sock_fd):
+        _mem(mem), _len(0), _pending(pending), _sock_fd(sock_fd){/* NOP */}
 
     void commit(size_t len){
         if (_len == 0) return;
-        this->_commit_cb(this, len);
+        ::send(_sock_fd, this->cast<const char *>(), len, 0);
+        _pending.push_with_haste(this);
         _len = 0;
     }
 
@@ -95,7 +118,8 @@ private:
 
     void *_mem;
     size_t _len;
-    commit_cb_type _commit_cb;
+    bounded_buffer<udp_zero_copy_asio_msb *> &_pending;
+    int _sock_fd;
 };
 
 /***********************************************************************
@@ -125,6 +149,10 @@ public:
     {
         UHD_LOG << boost::format("Creating udp transport for %s %s") % addr % port << std::endl;
 
+        #ifdef UHD_PLATFORM_WIN32
+        check_registry_for_fast_send_threshold(this->get_send_frame_size());
+        #endif /*UHD_PLATFORM_WIN32*/
+
         //resolve the address
         asio::ip::udp::resolver resolver(_io_service);
         asio::ip::udp::resolver::query query(asio::ip::udp::v4(), addr, port);
@@ -138,18 +166,18 @@ public:
 
         //allocate re-usable managed receive buffers
         for (size_t i = 0; i < get_num_recv_frames(); i++){
-            _mrb_pool.push_back(udp_zero_copy_asio_mrb(_recv_buffer_pool->at(i),
-                boost::bind(&udp_zero_copy_asio_impl::release, this, _1))
-            );
-            handle_recv(&_mrb_pool.back());
+            _mrb_pool.push_back(udp_zero_copy_asio_mrb(
+                _recv_buffer_pool->at(i), _pending_recv_buffs
+            ));
+            _pending_recv_buffs.push_with_haste(&_mrb_pool.back());
         }
 
         //allocate re-usable managed send buffers
         for (size_t i = 0; i < get_num_send_frames(); i++){
-            _msb_pool.push_back(udp_zero_copy_asio_msb(_send_buffer_pool->at(i),
-                boost::bind(&udp_zero_copy_asio_impl::commit, this, _1, _2))
-            );
-            handle_send(&_msb_pool.back());
+            _msb_pool.push_back(udp_zero_copy_asio_msb(
+                _send_buffer_pool->at(i), _pending_send_buffs, _sock_fd
+            ));
+            _pending_send_buffs.push_with_haste(&_msb_pool.back());
         }
     }
 
@@ -189,17 +217,9 @@ public:
                 ::recv(_sock_fd, mrb->cast<char *>(), _recv_frame_size, 0)
             );
 
-            this->handle_recv(mrb); //timeout: return the managed buffer to the queue
+            _pending_recv_buffs.push_with_haste(mrb); //timeout: return the managed buffer to the queue
         }
         return managed_recv_buffer::sptr();
-    }
-
-    UHD_INLINE void handle_recv(udp_zero_copy_asio_mrb *mrb){
-        _pending_recv_buffs.push_with_haste(mrb);
-    }
-
-    void release(udp_zero_copy_asio_mrb *mrb){
-        handle_recv(mrb);
     }
 
     size_t get_num_recv_frames(void) const {return _num_recv_frames;}
@@ -219,15 +239,6 @@ public:
             return msb->get_new(_send_frame_size);
         }
         return managed_send_buffer::sptr();
-    }
-
-    UHD_INLINE void handle_send(udp_zero_copy_asio_msb *msb){
-        _pending_send_buffs.push_with_haste(msb);
-    }
-
-    void commit(udp_zero_copy_asio_msb *msb, size_t len){
-        ::send(_sock_fd, msb->cast<const char *>(), len, 0);
-        handle_send(msb);
     }
 
     size_t get_num_send_frames(void) const {return _num_send_frames;}

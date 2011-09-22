@@ -46,27 +46,47 @@
 //virtual registers in the firmware to store persistent values
 static uint32_t fw_regs[8];
 
-extern uint16_t dsp0_dst_port, err0_dst_port, dsp1_dst_port;
-
 static void handle_udp_data_packet(
     struct socket_address src, struct socket_address dst,
     unsigned char *payload, int payload_len
 ){
-    size_t which;
-    switch(dst.port){
-    case USRP2_UDP_DSP0_PORT:
+    //handle ICMP destination unreachable
+    if (payload == NULL) switch(src.port){
+    case USRP2_UDP_RX_DSP0_PORT:
+        //the end continuous streaming command
+        sr_rx_ctrl0->cmd = 1 << 31 | 1 << 28; //no samples now
+        sr_rx_ctrl0->time_secs = 0;
+        sr_rx_ctrl0->time_ticks = 0; //latch the command
+        break;
+
+    case USRP2_UDP_RX_DSP1_PORT:
+        //the end continuous streaming command
+        sr_rx_ctrl1->cmd = 1 << 31 | 1 << 28; //no samples now
+        sr_rx_ctrl1->time_secs = 0;
+        sr_rx_ctrl1->time_ticks = 0; //latch the command
+        break;
+
+    case USRP2_UDP_TX_DSP0_PORT:
+        //end async update packets per second
+        sr_tx_ctrl->cyc_per_up = 0;
+        break;
+
+    default: return;
+    }
+
+    //handle an incoming UDP packet
+    size_t which = 0;
+    if (payload != 0) switch(dst.port){
+    case USRP2_UDP_RX_DSP0_PORT:
         which = 0;
-        dsp0_dst_port = src.port;
         break;
 
-    case USRP2_UDP_DSP1_PORT:
+    case USRP2_UDP_RX_DSP1_PORT:
         which = 2;
-        dsp1_dst_port = src.port;
         break;
 
-    case USRP2_UDP_ERR0_PORT:
+    case USRP2_UDP_TX_DSP0_PORT:
         which = 1;
-        err0_dst_port = src.port;
         break;
 
     default: return;
@@ -291,7 +311,10 @@ main(void)
 #endif
   printf("FPGA compatibility number: %d\n", USRP2_FPGA_COMPAT_NUM);
   printf("Firmware compatibility number: %d\n", USRP2_FW_COMPAT_NUM);
-  
+
+  //init readback for firmware minor version number
+  fw_regs[U2_FW_REG_VER_MINOR] = USRP2_FW_VER_MINOR;
+
 #ifdef BOOTLOADER
   //load the production FPGA image or firmware if appropriate
   do_the_bootload_thing();
@@ -305,14 +328,14 @@ main(void)
 
   //1) register the addresses into the network stack
   register_addrs(ethernet_mac_addr(), get_ip_addr());
-  pkt_ctrl_program_inspector(get_ip_addr(), USRP2_UDP_DSP0_PORT);
+  pkt_ctrl_program_inspector(get_ip_addr(), USRP2_UDP_TX_DSP0_PORT);
 
   //2) register callbacks for udp ports we service
   init_udp_listeners();
   register_udp_listener(USRP2_UDP_CTRL_PORT, handle_udp_ctrl_packet);
-  register_udp_listener(USRP2_UDP_DSP0_PORT, handle_udp_data_packet);
-  register_udp_listener(USRP2_UDP_ERR0_PORT, handle_udp_data_packet);
-  register_udp_listener(USRP2_UDP_DSP1_PORT, handle_udp_data_packet);
+  register_udp_listener(USRP2_UDP_RX_DSP0_PORT, handle_udp_data_packet);
+  register_udp_listener(USRP2_UDP_RX_DSP1_PORT, handle_udp_data_packet);
+  register_udp_listener(USRP2_UDP_TX_DSP0_PORT, handle_udp_data_packet);
 #ifdef USRP2P
   register_udp_listener(USRP2_UDP_UPDATE_PORT, handle_udp_fw_update_packet);
 #endif
@@ -334,6 +357,7 @@ main(void)
     }
 
     pic_interrupt_handler();
+    /*
     int pending = pic_regs->pending;		// poll for under or overrun
 
     if (pending & PIC_UNDERRUN_INT){
@@ -345,5 +369,6 @@ main(void)
       pic_regs->pending = PIC_OVERRUN_INT;	// clear interrupt
       putchar('O');
     }
+    */
   }
 }

@@ -17,15 +17,11 @@
 
 #include "libusb1_base.hpp"
 #include <uhd/transport/usb_zero_copy.hpp>
-#include <uhd/transport/bounded_buffer.hpp>
 #include <uhd/transport/buffer_pool.hpp>
-#include <uhd/utils/thread_priority.hpp>
-#include <uhd/utils/log.hpp>
+#include <uhd/utils/msg.hpp>
 #include <uhd/exception.hpp>
-#include <boost/function.hpp>
 #include <boost/foreach.hpp>
 #include <boost/thread/thread.hpp>
-#include <boost/thread/barrier.hpp>
 #include <list>
 
 using namespace uhd;
@@ -46,13 +42,35 @@ static const size_t DEFAULT_XFER_SIZE = 32*512; //bytes
 
 //! helper function: handles all async callbacks
 static void LIBUSB_CALL libusb_async_cb(libusb_transfer *lut){
-    (*static_cast<boost::function<void()> *>(lut->user_data))();
+    *(static_cast<bool *>(lut->user_data)) = true;
 }
 
-//! callback to free transfer upon cancellation
-static void LIBUSB_CALL cancel_transfer_cb(libusb_transfer *lut){
-    if (lut->status == LIBUSB_TRANSFER_CANCELLED) libusb_free_transfer(lut);
-    else UHD_LOGV(rarely) << "libusb cancel_transfer unexpected status " << lut->status << std::endl;
+/*!
+ * Wait for a managed buffer to become complete.
+ *
+ * This routine processes async events until the transaction completes.
+ * We must call the libusb handle events in a loop because the handler
+ * may complete managed buffers other than the one we are waiting on.
+ *
+ * We cannot determine if handle events timed out or processed an event.
+ * Therefore, the timeout condition is handled by using boost system time.
+ *
+ * \param ctx the libusb context structure
+ * \param timeout the wait timeout in seconds
+ * \param completed a reference to the completed flag
+ * \return true for completion, false for timeout
+ */
+UHD_INLINE bool wait_for_completion(libusb_context *ctx, const double timeout, bool &completed){
+    const boost::system_time timeout_time = boost::get_system_time() + boost::posix_time::microseconds(long(timeout*1000000));
+
+    while (not completed and (boost::get_system_time() < timeout_time)){
+        timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 10000; /*10ms*/
+        libusb_handle_events_timeout(ctx, &tv);
+    }
+
+    return completed;
 }
 
 /***********************************************************************
@@ -63,23 +81,32 @@ static void LIBUSB_CALL cancel_transfer_cb(libusb_transfer *lut){
 class libusb_zero_copy_mrb : public managed_recv_buffer{
 public:
     libusb_zero_copy_mrb(libusb_transfer *lut):
-        _lut(lut), _expired(true) { /* NOP */ }
+        _ctx(libusb::session::get_global_session()->get_context()),
+        _lut(lut), _expired(false) { /* NOP */ }
 
     void release(void){
         if (_expired) return;
+        completed = false;
         UHD_ASSERT_THROW(libusb_submit_transfer(_lut) == 0);
         _expired = true;
     }
 
-    sptr get_new(void){
-        _expired = false;
-        return make_managed_buffer(this);
+    sptr get_new(const double timeout, size_t &index){
+        if (wait_for_completion(_ctx, timeout, completed)){
+            index++;
+            _expired = false;
+            return make_managed_buffer(this);
+        }
+        return managed_recv_buffer::sptr();
     }
+
+    bool completed;
 
 private:
     const void *get_buff(void) const{return _lut->buffer;}
     size_t get_size(void) const{return _lut->actual_length;}
 
+    libusb_context *_ctx;
     libusb_transfer *_lut;
     bool _expired;
 };
@@ -92,25 +119,34 @@ private:
 class libusb_zero_copy_msb : public managed_send_buffer{
 public:
     libusb_zero_copy_msb(libusb_transfer *lut):
-        _lut(lut), _expired(true) { /* NOP */ }
+        _ctx(libusb::session::get_global_session()->get_context()),
+        _lut(lut), _expired(false) { /* NOP */ }
 
     void commit(size_t len){
         if (_expired) return;
+        completed = false;
         _lut->length = len;
-        if(len == 0) libusb_async_cb(_lut);
+        if (len == 0) libusb_async_cb(_lut);
         else UHD_ASSERT_THROW(libusb_submit_transfer(_lut) == 0);
         _expired = true;
     }
 
-    sptr get_new(void){
-        _expired = false;
-        return make_managed_buffer(this);
+    sptr get_new(const double timeout, size_t &index){
+        if (wait_for_completion(_ctx, timeout, completed)){
+            index++;
+            _expired = false;
+            return make_managed_buffer(this);
+        }
+        return managed_send_buffer::sptr();
     }
+
+    bool completed;
 
 private:
     void *get_buff(void) const{return _lut->buffer;}
     size_t get_size(void) const{return _lut->length;}
 
+    libusb_context *_ctx;
     libusb_transfer *_lut;
     bool _expired;
 };
@@ -123,8 +159,10 @@ public:
 
     libusb_zero_copy_impl(
         libusb::device_handle::sptr handle,
-        size_t recv_endpoint,
-        size_t send_endpoint,
+        const size_t recv_interface,
+        const size_t recv_endpoint,
+        const size_t send_interface,
+        const size_t send_endpoint,
         const device_addr_t &hints
     ):
         _handle(handle),
@@ -134,11 +172,11 @@ public:
         _num_send_frames(size_t(hints.cast<double>("num_send_frames", DEFAULT_NUM_XFERS))),
         _recv_buffer_pool(buffer_pool::make(_num_recv_frames, _recv_frame_size)),
         _send_buffer_pool(buffer_pool::make(_num_send_frames, _send_frame_size)),
-        _pending_recv_buffs(_num_recv_frames),
-        _pending_send_buffs(_num_send_frames)
+        _next_recv_buff_index(0),
+        _next_send_buff_index(0)
     {
-        _handle->claim_interface(2 /*in interface*/);
-        _handle->claim_interface(1 /*out interface*/);
+        _handle->claim_interface(recv_interface);
+        _handle->claim_interface(send_interface);
 
         //allocate libusb transfer structs and managed receive buffers
         for (size_t i = 0; i < get_num_recv_frames(); i++){
@@ -146,10 +184,7 @@ public:
             libusb_transfer *lut = libusb_alloc_transfer(0);
             UHD_ASSERT_THROW(lut != NULL);
 
-            _mrb_pool.push_back(libusb_zero_copy_mrb(lut));
-            _callbacks.push_back(boost::bind(
-                &libusb_zero_copy_impl::handle_recv, this, &_mrb_pool.back()
-            ));
+            _mrb_pool.push_back(boost::shared_ptr<libusb_zero_copy_mrb>(new libusb_zero_copy_mrb(lut)));
 
             libusb_fill_bulk_transfer(
                 lut,                                                    // transfer
@@ -158,12 +193,12 @@ public:
                 static_cast<unsigned char *>(_recv_buffer_pool->at(i)), // buffer
                 this->get_recv_frame_size(),                            // length
                 libusb_transfer_cb_fn(&libusb_async_cb),                // callback
-                static_cast<void *>(&_callbacks.back()),                // user_data
-                0                                                       // timeout
+                static_cast<void *>(&_mrb_pool.back()->completed),      // user_data
+                0                                                       // timeout (ms)
             );
 
             _all_luts.push_back(lut);
-            _mrb_pool.back().get_new();
+            _mrb_pool.back()->release();
         }
 
         //allocate libusb transfer structs and managed send buffers
@@ -172,10 +207,7 @@ public:
             libusb_transfer *lut = libusb_alloc_transfer(0);
             UHD_ASSERT_THROW(lut != NULL);
 
-            _msb_pool.push_back(libusb_zero_copy_msb(lut));
-            _callbacks.push_back(boost::bind(
-                &libusb_zero_copy_impl::handle_send, this, &_msb_pool.back()
-            ));
+            _msb_pool.push_back(boost::shared_ptr<libusb_zero_copy_msb>(new libusb_zero_copy_msb(lut)));
 
             libusb_fill_bulk_transfer(
                 lut,                                                    // transfer
@@ -184,52 +216,42 @@ public:
                 static_cast<unsigned char *>(_send_buffer_pool->at(i)), // buffer
                 this->get_send_frame_size(),                            // length
                 libusb_transfer_cb_fn(&libusb_async_cb),                // callback
-                static_cast<void *>(&_callbacks.back()),                // user_data
+                static_cast<void *>(&_msb_pool.back()->completed),      // user_data
                 0                                                       // timeout
             );
 
             _all_luts.push_back(lut);
-            libusb_async_cb(lut);
+            _msb_pool.back()->commit(0);
         }
-
-        //spawn the event handler threads
-        size_t concurrency = hints.cast<size_t>("concurrency_hint", 1);
-        boost::barrier spawn_barrier(concurrency+1);
-        for (size_t i = 0; i < concurrency; i++) _thread_group.create_thread(
-            boost::bind(&libusb_zero_copy_impl::run_event_loop, this, boost::ref(spawn_barrier))
-        );
-        spawn_barrier.wait();
     }
 
     ~libusb_zero_copy_impl(void){
-        //cancel and free all transfers
+        libusb_context *ctx = libusb::session::get_global_session()->get_context();
+
+        //cancel all transfers
         BOOST_FOREACH(libusb_transfer *lut, _all_luts){
-            lut->callback = libusb_transfer_cb_fn(&cancel_transfer_cb);
             libusb_cancel_transfer(lut);
-            while(lut->status != LIBUSB_TRANSFER_CANCELLED && lut->status != LIBUSB_TRANSFER_COMPLETED) {
-                boost::this_thread::sleep(boost::posix_time::milliseconds(10));
-            }
         }
-        //shutdown the threads
-        _threads_running = false;
-        _thread_group.interrupt_all();
-        _thread_group.join_all();
+
+        //process all transfers until timeout occurs
+        bool completed = false;
+        wait_for_completion(ctx, 0.01, completed);
+
+        //free all transfers
+        BOOST_FOREACH(libusb_transfer *lut, _all_luts){
+            libusb_free_transfer(lut);
+        }
+
     }
 
     managed_recv_buffer::sptr get_recv_buff(double timeout){
-        libusb_zero_copy_mrb *mrb = NULL;
-        if (_pending_recv_buffs.pop_with_timed_wait(mrb, timeout)){
-            return mrb->get_new();
-        }
-        return managed_recv_buffer::sptr();
+        if (_next_recv_buff_index == _num_recv_frames) _next_recv_buff_index = 0;
+        return _mrb_pool[_next_recv_buff_index]->get_new(timeout, _next_recv_buff_index);
     }
 
     managed_send_buffer::sptr get_send_buff(double timeout){
-        libusb_zero_copy_msb *msb = NULL;
-        if (_pending_send_buffs.pop_with_timed_wait(msb, timeout)){
-            return msb->get_new();
-        }
-        return managed_send_buffer::sptr();
+        if (_next_send_buff_index == _num_send_frames) _next_send_buff_index = 0;
+        return _msb_pool[_next_send_buff_index]->get_new(timeout, _next_send_buff_index);
     }
 
     size_t get_num_recv_frames(void) const { return _num_recv_frames; }
@@ -239,49 +261,19 @@ public:
     size_t get_send_frame_size(void) const { return _send_frame_size; }
 
 private:
-    //! Handle a bound async callback for recv
-    void handle_recv(libusb_zero_copy_mrb *mrb){
-        _pending_recv_buffs.push_with_haste(mrb);
-    }
-
-    //! Handle a bound async callback for send
-    void handle_send(libusb_zero_copy_msb *msb){
-        _pending_send_buffs.push_with_haste(msb);
-    }
-
     libusb::device_handle::sptr _handle;
     const size_t _recv_frame_size, _num_recv_frames;
     const size_t _send_frame_size, _num_send_frames;
 
     //! Storage for transfer related objects
     buffer_pool::sptr _recv_buffer_pool, _send_buffer_pool;
-    bounded_buffer<libusb_zero_copy_mrb *> _pending_recv_buffs;
-    bounded_buffer<libusb_zero_copy_msb *> _pending_send_buffs;
-    std::list<libusb_zero_copy_mrb> _mrb_pool;
-    std::list<libusb_zero_copy_msb> _msb_pool;
-    std::list<boost::function<void()> > _callbacks;
+    std::vector<boost::shared_ptr<libusb_zero_copy_mrb> > _mrb_pool;
+    std::vector<boost::shared_ptr<libusb_zero_copy_msb> > _msb_pool;
+    size_t _next_recv_buff_index, _next_send_buff_index;
 
     //! a list of all transfer structs we allocated
     std::list<libusb_transfer *> _all_luts;
 
-    //! event handler threads
-    boost::thread_group _thread_group;
-    bool _threads_running;
-
-    void run_event_loop(boost::barrier &spawn_barrier){
-        _threads_running = true;
-        spawn_barrier.wait();
-        set_thread_priority_safe();
-        libusb_context *context = libusb::session::get_global_session()->get_context();
-        try{
-            while(_threads_running){
-                timeval tv;
-                tv.tv_sec = 0;
-                tv.tv_usec = 100000; //100ms
-                libusb_handle_events_timeout(context, &tv);
-            }
-        } catch(const boost::thread_interrupted &){}
-    }
 
 };
 
@@ -290,14 +282,16 @@ private:
  **********************************************************************/
 usb_zero_copy::sptr usb_zero_copy::make(
     usb_device_handle::sptr handle,
-    size_t recv_endpoint,
-    size_t send_endpoint,
+    const size_t recv_interface,
+    const size_t recv_endpoint,
+    const size_t send_interface,
+    const size_t send_endpoint,
     const device_addr_t &hints
 ){
     libusb::device_handle::sptr dev_handle(libusb::device_handle::get_cached_handle(
         boost::static_pointer_cast<libusb::special_handle>(handle)->get_device()
     ));
     return sptr(new libusb_zero_copy_impl(
-        dev_handle, recv_endpoint, send_endpoint, hints
+        dev_handle, recv_interface, recv_endpoint, send_interface, send_endpoint, hints
     ));
 }

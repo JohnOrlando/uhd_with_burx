@@ -23,19 +23,14 @@ LIBUHD_REGISTER_COMPONENT("USRP-E Utils" ENABLE_USRP_E_UTILS OFF "LINUX" OFF)
 IF(ENABLE_USRP_E_UTILS)
     ENABLE_LANGUAGE(C)
     INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
-    INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/lib/usrp/usrp_e100)
-    INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/lib/usrp/usrp_e100/include)
-    INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/lib/ic_reg_maps)
+    INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/lib/usrp/e100)
+    INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/lib/usrp/e100/include)
 
     SET(usrp_e_utils_sources
-        usrp-e-utility.cpp
-        usrp-e-loopback.c
-        usrp-e-timed.c
+        usrp-e-loopback.cpp
         usrp-e-wb-test.cpp
         usrp-e-debug-pins.c
         usrp-e-gpio.c
-        usrp-e-i2c.c
-        usrp-e-spi.c
     )
 
     #for each source: build an executable and install

@@ -16,10 +16,9 @@
 //
 
 #include "codec_ctrl.hpp"
-#include "usrp_commands.h"
-#include "clock_ctrl.hpp"
 #include "ad9862_regs.hpp"
 #include <uhd/utils/log.hpp>
+#include <uhd/utils/safe_call.hpp>
 #include <uhd/types/dict.hpp>
 #include <uhd/exception.hpp>
 #include <uhd/utils/algorithm.hpp>
@@ -42,9 +41,7 @@ const gain_range_t usrp1_codec_ctrl::rx_pga_gain_range(0, 20, 1);
 class usrp1_codec_ctrl_impl : public usrp1_codec_ctrl {
 public:
     //structors
-    usrp1_codec_ctrl_impl(usrp1_iface::sptr iface,
-                          usrp1_clock_ctrl::sptr clock,
-                          int spi_slave);
+    usrp1_codec_ctrl_impl(spi_iface::sptr iface, int spi_slave);
     ~usrp1_codec_ctrl_impl(void);
 
     //aux adc and dac control
@@ -52,7 +49,7 @@ public:
     void write_aux_dac(aux_dac_t which, double volts);
 
     //duc control
-    void set_duc_freq(double freq);
+    void set_duc_freq(double freq, double);
     void enable_tx_digital(bool enb);
 
     //pga gain control
@@ -65,8 +62,7 @@ public:
     void bypass_adc_buffers(bool bypass);
 
 private:
-    usrp1_iface::sptr _iface;
-    usrp1_clock_ctrl::sptr _clock_ctrl;
+    spi_iface::sptr _iface;
     int _spi_slave;
     ad9862_regs_t _ad9862_regs;
     void send_reg(boost::uint8_t addr);
@@ -79,12 +75,8 @@ private:
 /***********************************************************************
  * Codec Control Structors
  **********************************************************************/
-usrp1_codec_ctrl_impl::usrp1_codec_ctrl_impl(usrp1_iface::sptr iface,
-                                             usrp1_clock_ctrl::sptr clock,
-                                             int spi_slave)
-{
+usrp1_codec_ctrl_impl::usrp1_codec_ctrl_impl(spi_iface::sptr iface, int spi_slave){
     _iface = iface;
-    _clock_ctrl = clock;
     _spi_slave = spi_slave;
 
     //soft reset
@@ -140,8 +132,7 @@ usrp1_codec_ctrl_impl::usrp1_codec_ctrl_impl(usrp1_iface::sptr iface,
     this->send_reg(34);
 }
 
-usrp1_codec_ctrl_impl::~usrp1_codec_ctrl_impl(void)
-{
+usrp1_codec_ctrl_impl::~usrp1_codec_ctrl_impl(void){UHD_SAFE_CALL(
     //set aux dacs to zero
     this->write_aux_dac(AUX_DAC_A, 0);
     this->write_aux_dac(AUX_DAC_B, 0);
@@ -154,7 +145,7 @@ usrp1_codec_ctrl_impl::~usrp1_codec_ctrl_impl(void)
     _ad9862_regs.tx_digital_pd = 1;
     _ad9862_regs.tx_analog_pd = ad9862_regs_t::TX_ANALOG_PD_BOTH;
     this->send_reg(8);
-}
+)}
 
 /***********************************************************************
  * Codec Control Gain Control Methods
@@ -381,9 +372,9 @@ double usrp1_codec_ctrl_impl::fine_tune(double codec_rate, double target_freq)
     return actual_freq;
 }
 
-void usrp1_codec_ctrl_impl::set_duc_freq(double freq)
+void usrp1_codec_ctrl_impl::set_duc_freq(double freq, double rate)
 {
-    double codec_rate = _clock_ctrl->get_master_clock_freq() * 2;
+    double codec_rate = rate * 2;
     double coarse_freq = coarse_tune(codec_rate, freq);
     double fine_freq = fine_tune(codec_rate / 4, freq - coarse_freq);
 
@@ -421,9 +412,8 @@ void usrp1_codec_ctrl_impl::bypass_adc_buffers(bool bypass) {
 /***********************************************************************
  * Codec Control Make
  **********************************************************************/
-usrp1_codec_ctrl::sptr usrp1_codec_ctrl::make(usrp1_iface::sptr iface,
-                                              usrp1_clock_ctrl::sptr clock,
+usrp1_codec_ctrl::sptr usrp1_codec_ctrl::make(spi_iface::sptr iface,
                                               int spi_slave)
 {
-    return sptr(new usrp1_codec_ctrl_impl(iface, clock, spi_slave));
+    return sptr(new usrp1_codec_ctrl_impl(iface, spi_slave));
 }

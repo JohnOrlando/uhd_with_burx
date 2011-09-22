@@ -1,3 +1,20 @@
+//
+// Copyright 2011 Ettus Research LLC
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 
 module wb_reg
   #(parameter ADDR=0,
@@ -144,19 +161,19 @@ module simple_gemac_wb
    
    always @(posedge wb_clk)
      case(wb_adr[7:2])
-       0 : wb_dat_o <= misc_settings;
-       1 : wb_dat_o <= ucast_addr[47:32];
-       2 : wb_dat_o <= ucast_addr[31:0];
-       3 : wb_dat_o <= mcast_addr[47:32];
-       4 : wb_dat_o <= mcast_addr[31:0];
-       5 : wb_dat_o <= {NoPre,Divider};
-       6 : wb_dat_o <= MIIADDRESS;
-       7 : wb_dat_o <= CtrlData;
+       //0 : wb_dat_o <= misc_settings;
+       //1 : wb_dat_o <= ucast_addr[47:32];
+       //2 : wb_dat_o <= ucast_addr[31:0];
+       //3 : wb_dat_o <= mcast_addr[47:32];
+       //4 : wb_dat_o <= mcast_addr[31:0];
+       //5 : wb_dat_o <= {NoPre,Divider};
+       //6 : wb_dat_o <= MIIADDRESS;
+       //7 : wb_dat_o <= CtrlData;
        8 : wb_dat_o <= MIICOMMAND;
        9 : wb_dat_o <= MIISTATUS;
        10: wb_dat_o <= MIIRX_DATA;
-       11: wb_dat_o <= pause_time;
-       12: wb_dat_o <= pause_thresh;
+       //11: wb_dat_o <= pause_time;
+       //12: wb_dat_o <= pause_thresh;
      endcase // case (wb_adr[7:2])
    
 endmodule // simple_gemac_wb

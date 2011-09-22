@@ -19,6 +19,7 @@
 #define INCLUDED_UHD_UTILS_MSG_HPP
 
 #include <uhd/config.hpp>
+#include <uhd/utils/pimpl.hpp>
 #include <ostream>
 #include <string>
 
@@ -29,6 +30,13 @@
 #define UHD_MSG(type) \
     uhd::msg::_msg(uhd::msg::type)()
 
+//! Helpful debug tool to print site info
+#define UHD_HERE() \
+    UHD_MSG(status) << __FILE__ << ":" << __LINE__ << std::endl
+
+//! Helpful debug tool to print a variable
+#define UHD_VAR(var) \
+    UHD_MSG(status) << #var << " = " << var << std::endl;
 
 namespace uhd{ namespace msg{
 
@@ -52,10 +60,13 @@ namespace uhd{ namespace msg{
     UHD_API void register_handler(const handler_t &handler);
 
     //! Internal message object (called by UHD_MSG macro)
-    struct UHD_API _msg{
+    class UHD_API _msg{
+    public:
         _msg(const type_t type);
         ~_msg(void);
         std::ostream &operator()(void);
+    private:
+        UHD_PIMPL_DECL(impl) _impl;
     };
 
 }} //namespace uhd::msg

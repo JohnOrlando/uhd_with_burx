@@ -24,11 +24,14 @@ SET(manual_sources
     build.rst
     coding.rst
     dboards.rst
+    gpsdo.rst
     general.rst
     images.rst
+    sync.rst
     transport.rst
     usrp1.rst
     usrp2.rst
+    usrp_b1xx.rst
     usrp_e1xx.rst
 )
 

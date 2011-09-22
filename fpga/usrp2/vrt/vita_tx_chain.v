@@ -1,3 +1,20 @@
+//
+// Copyright 2011 Ettus Research LLC
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 
 module vita_tx_chain
   #(parameter BASE_CTRL=0,
@@ -12,7 +29,7 @@ module vita_tx_chain
     input [63:0] vita_time,
     input [35:0] tx_data_i, input tx_src_rdy_i, output tx_dst_rdy_o,
     output [35:0] err_data_o, output err_src_rdy_o, input err_dst_rdy_i,
-    output [15:0] dac_a, output [15:0] dac_b,
+    output [23:0] tx_i, output [23:0] tx_q,
     output underrun, output run,
     output [31:0] debug);
 
@@ -67,7 +84,7 @@ module vita_tx_chain
      (.clk(clk),.rst(reset),
       .set_stb(set_stb),.set_addr(set_addr),.set_data(set_data),
       .sample(sample_tx), .run(run), .strobe(strobe_tx),
-      .dac_a(dac_a),.dac_b(dac_b),
+      .tx_i(tx_i),.tx_q(tx_q),
       .debug(debug_tx_dsp) );
 
    wire [35:0] 		flow_data, err_data_int;

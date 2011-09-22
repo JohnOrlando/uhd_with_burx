@@ -15,7 +15,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <uhd/usrp/subdev_props.hpp>
 #include <uhd/types/ranges.hpp>
 #include <uhd/utils/assert_has.hpp>
 #include <uhd/utils/static.hpp>
@@ -142,6 +141,10 @@ void unknown_rx::rx_get(const wax::obj &key_, wax::obj &val){
         val = prop_names_t(1, ""); //vector of 1 empty string
         return;
 
+    case SUBDEV_PROP_SENSOR_NAMES:
+        val = std::vector<std::string>(); //empty
+        return;
+
     case SUBDEV_PROP_CONNECTION:
         val = SUBDEV_CONN_COMPLEX_IQ;
         return;
@@ -236,6 +239,10 @@ void unknown_tx::tx_get(const wax::obj &key_, wax::obj &val){
 
     case SUBDEV_PROP_ANTENNA_NAMES:
         val = prop_names_t(1, ""); //vector of 1 empty string
+        return;
+
+    case SUBDEV_PROP_SENSOR_NAMES:
+        val = std::vector<std::string>(); //empty
         return;
 
     case SUBDEV_PROP_CONNECTION:

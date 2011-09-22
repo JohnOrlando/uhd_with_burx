@@ -14,6 +14,7 @@ The methods of loading images into the device varies among devices:
 * **USRP2:** The user must manually write the images onto the USRP2 SD card.
 * **USRP-N Series:** The user must manually transfer the images over ethernet.
 * **USRP-E Series:** The host code will automatically load the FPGA at runtime.
+* **USRP-B Series:** The host code will automatically load the FPGA at runtime.
 
 ------------------------------------------------------------------------
 Pre-built images
@@ -22,29 +23,16 @@ Pre-built images
 Pre-built images are available for download.
 See the UHD wiki for the download link.
 
-The pre-built images come in platform-specific installer packages
-and platform-independent archive files:
+The pre-built images come in two forms:
 
-* **Linux:** DEB or RPM installer
-* **Windows:** not available yet...
-* **Macintosh:** not available yet...
-* **Platform-independent:** ZIP or TAR.GZ archive
+* bundled with UHD in a platform-specific installer
+* stand-alone platform-independent archive files
 
-^^^^^^^^^^^^^^^^^^
-Linux installers
-^^^^^^^^^^^^^^^^^^
-The Linux-based installers will install the images into /usr/share/uhd/images.
-On a Linux system, the UHD will always search this path for image files.
-
-Commands to install a linux rpm or deb package:
-
-::
-
-    sudo rpm -i <linux-images-installer>.rpm
-
-    -- OR --
-
-    sudo dpkg -i <linux-images-installer>.deb
+^^^^^^^^^^^^^^^^^^^^^^
+Platform installers
+^^^^^^^^^^^^^^^^^^^^^^
+The UNIX-based installers will install the images into /usr/share/uhd/images.
+On windows, the images will be installed to <install-path>/share/uhd/images.
 
 ^^^^^^^^^^^^^^^^^^^^^^
 Archive install

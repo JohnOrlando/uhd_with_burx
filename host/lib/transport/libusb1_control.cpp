@@ -17,6 +17,7 @@
 
 #include "libusb1_base.hpp"
 #include <uhd/transport/usb_control.hpp>
+#include <boost/thread/mutex.hpp>
 
 using namespace uhd::transport;
 
@@ -27,10 +28,10 @@ const int libusb_timeout = 0;
  **********************************************************************/
 class libusb_control_impl : public usb_control {
 public:
-    libusb_control_impl(libusb::device_handle::sptr handle):
+    libusb_control_impl(libusb::device_handle::sptr handle, const size_t interface):
         _handle(handle)
     {
-        _handle->claim_interface(0 /* control interface */);
+        _handle->claim_interface(interface);
     }
 
     ssize_t submit(boost::uint8_t request_type,
@@ -40,6 +41,7 @@ public:
                   unsigned char *buff,
                   boost::uint16_t length
     ){
+        boost::mutex::scoped_lock lock(_mutex);
         return libusb_control_transfer(_handle->get(),
                                        request_type,
                                        request,
@@ -52,13 +54,14 @@ public:
 
 private:
     libusb::device_handle::sptr _handle;
+    boost::mutex _mutex;
 };
 
 /***********************************************************************
  * USB control public make functions
  **********************************************************************/
-usb_control::sptr usb_control::make(usb_device_handle::sptr handle){
+usb_control::sptr usb_control::make(usb_device_handle::sptr handle, const size_t interface){
     return sptr(new libusb_control_impl(libusb::device_handle::get_cached_handle(
         boost::static_pointer_cast<libusb::special_handle>(handle)->get_device()
-    )));
+    ), interface));
 }

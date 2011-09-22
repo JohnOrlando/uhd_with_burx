@@ -19,6 +19,7 @@
 #define INCLUDED_UHD_TYPES_SERIAL_HPP
 
 #include <uhd/config.hpp>
+#include <boost/shared_ptr.hpp>
 #include <boost/cstdint.hpp>
 #include <vector>
 
@@ -43,6 +44,8 @@ namespace uhd{
      */
     class UHD_API i2c_iface{
     public:
+        typedef boost::shared_ptr<i2c_iface> sptr;
+
         /*!
          * Write bytes over the i2c.
          * \param addr the address
@@ -123,6 +126,8 @@ namespace uhd{
      */
     class UHD_API spi_iface{
     public:
+        typedef boost::shared_ptr<spi_iface> sptr;
+
         /*!
         * Perform a spi transaction.
         * \param which_slave the slave device number
@@ -168,6 +173,28 @@ namespace uhd{
             boost::uint32_t data,
             size_t num_bits
         );
+    };
+
+    /*!
+     * UART interface to write and read bytes.
+     */
+    class UHD_API uart_iface{
+    public:
+        typedef boost::shared_ptr<uart_iface> sptr;
+
+        /*!
+         * Write to a serial port.
+         * \param dev which UART to write to
+         * \param buf the data to write
+         */
+        virtual void write_uart(boost::uint8_t dev, const std::string &buf) = 0;
+
+        /*!
+         * Read from a serial port.
+         * \param dev which UART to read from
+         * \return the data read from the serial port
+         */
+        virtual std::string read_uart(boost::uint8_t dev) = 0;
     };
 
 } //namespace uhd
