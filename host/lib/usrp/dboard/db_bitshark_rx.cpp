@@ -22,10 +22,9 @@
 #include <uhd/utils/static.hpp>
 #include <uhd/utils/assert_has.hpp>
 #include <uhd/utils/algorithm.hpp>
-#include <uhd/utils/warning.hpp>
 #include <uhd/types/ranges.hpp>
 #include <uhd/types/dict.hpp>
-#include <uhd/usrp/subdev_props.hpp>
+#include <uhd/types/sensors.hpp>
 #include <uhd/usrp/dboard_base.hpp>
 #include <uhd/usrp/dboard_manager.hpp>
 #include <boost/assign/list_of.hpp>
@@ -143,7 +142,6 @@ private:
 	    ) << std::endl;
 	/* send the data */
 	this->get_iface()->write_i2c(_burx_addr(), cmd_vector);
-	boost::this_thread::sleep(boost::posix_time::milliseconds(5));
     }
 
     void set_clock_scheme(boost::uint8_t clock_scheme, boost::uint32_t ref_clk_freq)
@@ -229,10 +227,7 @@ void burx::set_lo_freq(double target_freq)
 {
     target_freq = burx_freq_range.clip(target_freq);
 
-    uint32_t freq_in_hz = (uint32_t)target_freq;
-    uint32_t freq_div_5Mhz = freq_in_hz/5000000;
-    uint32_t freq_rounded_to_5Mhz_in_khz = freq_div_5Mhz*5000;
-    double   freq_rounded_to_5Mhz_in_hz = (double)(freq_rounded_to_5Mhz_in_khz*1000);
+    uint32_t freq_in_khz = (uint32_t)(target_freq/1000.0);
     uint8_t val[4];
     uint8_t i;
 
@@ -242,7 +237,7 @@ void burx::set_lo_freq(double target_freq)
     ) % target_freq << std::endl;
 
    memset(val,0x00,4);
-   memcpy(val,&freq_rounded_to_5Mhz_in_khz,4);
+   memcpy(val,&freq_in_khz,4);
    
    /* build the cmd structure to send down to the BURX card to
       change the LO freq */
@@ -261,7 +256,7 @@ void burx::set_lo_freq(double target_freq)
    
    send_cmd(cmd_vector);
 
-   _lo_freq = freq_rounded_to_5Mhz_in_hz;
+   _lo_freq = target_freq;
 }
 
 /***********************************************************************
@@ -306,7 +301,7 @@ void burx::set_gain(double gain, const std::string &name)
  **********************************************************************/
 void burx::set_bandwidth(double bandwidth){
     //clip the input
-    bandwidth = uhd::clip<double>(bandwidth, 1e6, 28e6);  
+    bandwidth = clip<double>(bandwidth, 1e6, 28e6);  
 
     uint16_t rf_bw_in_khz = (uint16_t)(bandwidth/1000.0);
     uint8_t val[4];
@@ -341,10 +336,6 @@ void burx::set_bandwidth(double bandwidth){
     send_cmd(cmd_vector);
 
     _bandwidth = bandwidth;
-
-    /* delay is necessary to allow for the BURX board to complete
-       the operation...must be a minimum of 100 mS */
-    boost::this_thread::sleep(boost::posix_time::milliseconds(110));		
 }
 
 /***********************************************************************
@@ -405,10 +396,16 @@ void burx::rx_get(const wax::obj &key_, wax::obj &val){
         val = false;
         return;
 
-//    case SUBDEV_PROP_LO_LOCKED:
-//        val = true;  /* we don't have a way to report lock state of the LO,
-//			so always report true */
-//	return;
+    // The BURX doesn't have a way to report whether the LO is locked. The UHD code
+    // REALLY wants a sensor to be there, so create a sensor that's always locked.
+    case SUBDEV_PROP_SENSOR:
+        UHD_ASSERT_THROW(key.name == "lo_locked");
+        val = sensor_value_t("LO", true, "locked", "unlocked");
+        return;
+
+    case SUBDEV_PROP_SENSOR_NAMES:
+        val = prop_names_t(1, "lo_locked");
+        return;
 
     case SUBDEV_PROP_BANDWIDTH:
         val = _bandwidth; /* _bandwidth is full channel complex, and the BURX board
